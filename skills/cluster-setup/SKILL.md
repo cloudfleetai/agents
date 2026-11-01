@@ -1,12 +1,15 @@
 ---
 name: cluster-setup
-description: This skill should be used when the user wants to create a CFKE cluster, set up fleets, connect cloud providers (AWS, GCP, Hetzner), add self-managed nodes, or get a new Cloudfleet environment running.
-user-invocable: false
+description: This skill should be used when the user wants to create a CFKE cluster, set up fleets, connect cloud providers (AWS, GCP, Hetzner), add self-managed nodes, or get a new Cloudfleet environment running using the cloudfleet CLI or API. For Terraform/HCL use the terraform skill instead; the schemas differ.
+user-invocable: true
+argument-hint: "[cluster-name]"
 ---
 
 # Cluster Setup
 
 Guide users through the full process of getting a Cloudfleet cluster up and running — from creating the cluster through connecting cloud accounts to deploying a first workload. See [references/cluster-setup.md](references/cluster-setup.md) for detailed CLI commands and all provider examples.
+
+**This skill covers the `cloudfleet` CLI and API JSON only.** If the user is writing Terraform or does not want the CLI, use the `terraform` skill. The Terraform provider names the same fields differently (fleet `name` not `id`, `api_key` not `apiKey`, no `enabled` flag, named `constraints` attributes), so the JSON examples below are wrong as HCL. The product rules here (tier gates, the amd64 arch default, async fleet readiness) apply to both.
 
 ## Setup Flow
 

@@ -217,35 +217,9 @@ cloudfleet clusters add-self-managed-node <cluster-id> \
 
 The `--region` and `--zone` values become Kubernetes node labels (`topology.kubernetes.io/region` and `topology.kubernetes.io/zone`) for workload scheduling.
 
-### Terraform (Cloud-init)
+### Terraform
 
-For automated provisioning of new VMs:
-
-```hcl
-resource "cloudfleet_cfke_node_join_information" "node" {
-  cluster_id = data.cloudfleet_cfke_cluster.cluster.id
-  region     = "datacenter-1"
-  zone       = "rack-a"
-  node_labels = {
-    "cfke.io/provider" = "custom"
-  }
-}
-```
-
-### Terraform (SSH — existing machines)
-
-```hcl
-resource "cloudfleet_cfke_self_managed_node" "server" {
-  cluster_id = cloudfleet_cfke_cluster.example.id
-  region     = "datacenter-1"
-  zone       = "rack-a"
-  ssh {
-    host             = "192.168.1.100"
-    user             = "ubuntu"
-    private_key_path = "~/.ssh/id_rsa"
-  }
-}
-```
+`cloudfleet_cfke_self_managed_node` (SSH into an existing machine) and `cloudfleet_cfke_node_join_information` (cloud-init for a new VM) are documented in the `terraform` skill.
 
 ### GPU Nodes
 

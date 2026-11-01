@@ -6,7 +6,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/validate-kubectl-context"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/validate-kubectl-context\""
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/validate-terraform\""
           }
         ]
       }

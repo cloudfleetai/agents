@@ -6,8 +6,9 @@
 
 - **Preconfigured MCP server** — query clusters, list resources, and get cluster info without local setup
 - **kubectl guardrail** — a PreToolUse hook resolves the server each kubectl command would reach and blocks it if that server is not a CFKE cluster, plus isolated kubeconfig management. A backstop, not a security boundary: aliases and wrapper scripts bypass it.
+- **Terraform guardrail**: before `terraform plan`, `apply` or `destroy` in a directory using the Cloudfleet provider, a PreToolUse hook checks for a `dev_overrides` entry that would swap in a local provider build, and for `CLOUDFLEET_ORGANIZATION_ID`, the provider block and the profile naming different organizations. `apply` and `destroy` prompt for confirmation only when one of those is found.
 - **Background knowledge** — CFKE architecture, CFCR usage, best practices (resource requests, load balancers, node placement) auto-triggered when relevant
-- **Guided workflows** — cluster setup, fleet configuration, self-managed nodes, debugging
+- **Guided workflows** — cluster setup via the CLI or Terraform, fleet configuration, self-managed nodes, debugging
 
 ## Configuration
 
@@ -38,6 +39,8 @@ Validate and lint before submitting changes:
 ```bash
 claude plugin validate .
 npx markdownlint-cli 'skills/**/*.md' 'agents/**/*.md' --config .markdownlint.json
+scripts/test-validate-kubectl-context
+scripts/test-validate-terraform
 ```
 
 ## Getting Started
@@ -47,6 +50,7 @@ Once installed, try these prompts:
 - `I'm getting started with Cloudfleet` — walks you through CLI setup and authentication
 - `What clusters do I have?` — lists your clusters with status and details
 - `Create a new cluster on Hetzner` — guided cluster and fleet setup
+- `Write Terraform for a CFKE cluster with a Hetzner fleet`: HCL against the Cloudfleet provider
 - `Check if my cluster follows best practices` — audits deployments for resource requests, LB policy, node placement
 - `Debug my cluster, pods are stuck in Pending` — systematic debugging workflow
 - `Push my app image to CFCR` — container registry guidance
@@ -57,7 +61,7 @@ Once installed, try these prompts:
 - [Cloudfleet CLI](https://cloudfleet.ai/docs/introduction/getting-started/) v1.2+ (write commands changed their input model in 1.0)
 - A Cloudfleet account with at least one configured authentication profile
 - (Optional) `kubectl` for full cluster access
-- `jq`, required by the kubectl guardrail hook. Without it the hook allows every command rather than blocking the session.
+- `jq`, required by the kubectl and Terraform guardrail hooks. Without it the hooks allow every command rather than blocking the session.
 
 ## Documentation
 
@@ -67,16 +71,17 @@ Once installed, try these prompts:
 
 ## Skills
 
-| Skill            | Invocable | Description                                     |
-| ---------------- | --------- | ----------------------------------------------- |
-| `setup`          | Yes       | Install CLI, authenticate, configure access     |
-| `cluster-info`   | Yes       | List and inspect Cloudfleet clusters            |
-| `query-cluster`  | Yes       | Query Kubernetes resources (kubectl or MCP)     |
-| `debug-cluster`  | Yes       | Guided cluster debugging workflow               |
-| `cluster-setup`  | Auto      | Create clusters, fleets, add self-managed nodes |
-| `best-practices` | Auto      | Resource requests, LB policy, node placement    |
-| `cfke-overview`  | Auto      | CFKE architecture and concepts                  |
-| `cfcr-overview`  | Auto      | Container registry usage                        |
+| Skill            | Invocable | Description                                                  |
+| ---------------- | --------- | ------------------------------------------------------------ |
+| `setup`          | Yes       | Install CLI, authenticate, configure access                  |
+| `cluster-info`   | Yes       | List and inspect Cloudfleet clusters                         |
+| `query-cluster`  | Yes       | Query Kubernetes resources (kubectl or MCP)                  |
+| `debug-cluster`  | Yes       | Guided cluster debugging workflow                            |
+| `cluster-setup`  | Yes       | Create clusters, fleets, add self-managed nodes with the CLI |
+| `terraform`      | Yes       | Clusters, fleets and nodes with the Terraform provider       |
+| `best-practices` | Auto      | Resource requests, LB policy, node placement                 |
+| `cfke-overview`  | Auto      | CFKE architecture and concepts                               |
+| `cfcr-overview`  | Auto      | Container registry usage                                     |
 
 ## Disclaimer
 

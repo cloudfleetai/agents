@@ -17,6 +17,18 @@ jobs:
       - name: Validate plugin
         run: claude plugin validate .
 
+  test-hooks:
+    name: Test hooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: kubectl context hook
+        run: scripts/test-validate-kubectl-context
+
+      - name: Terraform hook
+        run: scripts/test-validate-terraform
+
   lint-markdown:
     name: Lint markdown
     runs-on: ubuntu-latest
