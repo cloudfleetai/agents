@@ -7,6 +7,7 @@
 - **Preconfigured MCP server** — query clusters, list resources, and get cluster info without local setup
 - **kubectl guardrail** — a PreToolUse hook resolves the server each kubectl command would reach and blocks it if that server is not a CFKE cluster, plus isolated kubeconfig management. A backstop, not a security boundary: aliases and wrapper scripts bypass it.
 - **Terraform guardrail**: before `terraform plan`, `apply` or `destroy` in a directory using the Cloudfleet provider, a PreToolUse hook checks for a `dev_overrides` entry that would swap in a local provider build, and for `CLOUDFLEET_ORGANIZATION_ID`, the provider block and the profile naming different organizations. `apply` and `destroy` prompt for confirmation only when one of those is found.
+- **Feedback prompts**: modelled on the Stripe plugin. When a Cloudfleet skill, MCP tool or CLI command fails, and occasionally after Cloudfleet work, hooks ask Claude to assess it and offer to send feedback with `cloudfleet feedback`. Claude shows the draft and sends only after you approve. Needs CLI 1.10.0+; with an older CLI the hooks stay silent.
 - **Background knowledge** — CFKE architecture, CFCR usage, best practices (resource requests, load balancers, node placement) auto-triggered when relevant
 - **Guided workflows** — cluster setup via the CLI or Terraform, fleet configuration, self-managed nodes, debugging
 
@@ -41,6 +42,7 @@ claude plugin validate .
 npx markdownlint-cli 'skills/**/*.md' 'agents/**/*.md' --config .markdownlint.json
 scripts/test-validate-kubectl-context
 scripts/test-validate-terraform
+scripts/test-feedback-hook
 ```
 
 ## Getting Started
@@ -61,7 +63,7 @@ Once installed, try these prompts:
 - [Cloudfleet CLI](https://cloudfleet.ai/docs/introduction/getting-started/) v1.2+ (write commands changed their input model in 1.0)
 - A Cloudfleet account with at least one configured authentication profile
 - (Optional) `kubectl` for full cluster access
-- `jq`, required by the kubectl and Terraform guardrail hooks. Without it the hooks allow every command rather than blocking the session.
+- `jq`, required by the guardrail and feedback hooks. Without it the hooks allow every command and stay silent rather than blocking the session.
 
 ## Documentation
 

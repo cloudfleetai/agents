@@ -111,4 +111,4 @@ Let the user know that the Cloudfleet MCP server is already configured via this 
 
 ### 7. Feedback
 
-Let the user know: if they have any feedback about Cloudfleet or this Claude Code plugin, we'd love to hear it — they can open a support ticket at https://console.cloudfleet.ai/support.
+Let the user know that feedback about Cloudfleet or this plugin is welcome, positive or negative, and that you can send it for them: `cloudfleet feedback --sentiment <positive|neutral|negative> --message "..." --context "..." --source plugin`, or the `feedback_send` MCP tool. It needs CLI 1.10.0 or newer. Show them the draft and send only after they approve it. The Cloudfleet team reads feedback but does not reply; anything that needs an answer belongs in a support ticket at https://console.cloudfleet.ai/support.

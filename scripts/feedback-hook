@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# Feedback prompts, modelled on the Stripe plugin's lifecycle hooks (0.11.17):
+# at moments when there is Cloudfleet work to judge, tell Claude to assess it and
+# send Cloudfleet feedback after the user approves the draft.
+#
+# Event                 Condition                                       Rate
+# PostToolUseFailure    cloudfleet: skill, Cloudfleet MCP tool, or a     always
+#                       `cloudfleet` CLI command failed
+# PostToolBatch         the batch used Cloudfleet and nothing failed     PER_TOOL_RATE
+# PostToolUse (Agent)   a completed subagent's work mentions Cloudfleet  PER_TOOL_RATE
+# UserPromptSubmit      the previous turn mentions Cloudfleet            PER_TURN_RATE
+#
+# Sampled prompts fire at most once per session. Failures steer every time,
+# except failures of the feedback command itself. Nothing fires unless the
+# installed CLI is 1.10.0 or newer, the first release with feedback.
+#
+# Always exits 0: feedback guidance must never interrupt the agent's work.
+
+set -uo pipefail
+
+PER_TURN_RATE=10 # percent
+PER_TOOL_RATE=1  # percent
+MIN_CLI_VERSION=1.10.0
+TRANSCRIPT_TAIL_BYTES=1048576
+MCP_PREFIX='mcp__plugin_cloudfleet_cloudfleet__'
+MENTION_RE='cloudfleet|cfke|cfcr'
+
+command -v jq >/dev/null 2>&1 || exit 0
+
+INPUT=$(cat)
+field() { printf '%s' "$INPUT" | jq -r "$1 // empty" 2>/dev/null; }
+
+EVENT=$(field .hook_event_name)
+SESSION=$(field .session_id | tr -cd 'A-Za-z0-9_-')
+[ -n "$EVENT" ] || exit 0
+
+# shellcheck source=lib/command-parse.sh
+. "${0%/*}/lib/command-parse.sh"
+
+MARKER_DIR=${TMPDIR:-/tmp}
+ASKED="${MARKER_DIR%/}/cloudfleet-feedback-${SESSION:-nosession}"
+
+# Overridable so tests are deterministic.
+sampled() { [ "${CLOUDFLEET_FEEDBACK_ROLL:-$((RANDOM % 100))}" -lt "$1" ]; }
+
+# The feedback command is excluded so a failed send does not ask for feedback
+# about itself; `cloudfleet mcp` is the MCP server, covered by the MCP matcher.
+runs_cloudfleet() {
+    command_segments "$1" |
+        grep -E '^([^[:space:]]*/)?cloudfleet([[:space:]]|$)' |
+        grep -qvE '^([^[:space:]]*/)?cloudfleet[[:space:]]+(feedback|mcp)([[:space:]]|$)'
+}
+
+# Takes {tool_name, tool_input} JSON.
+is_cloudfleet_call() {
+    local name
+    name=$(printf '%s' "$1" | jq -r '.tool_name // empty' 2>/dev/null)
+    case "$name" in
+        "${MCP_PREFIX}feedback_send") return 1 ;;
+        "$MCP_PREFIX"*) return 0 ;;
+        Skill) case "$(printf '%s' "$1" | jq -r '.tool_input.skill // empty')" in cloudfleet:*) return 0 ;; esac ;;
+        Bash) runs_cloudfleet "$(printf '%s' "$1" | jq -r '.tool_input.command // empty')" && return 0 ;;
+    esac
+    return 1
+}
+
+cli_supported() {
+    local v want have i
+    command -v cloudfleet >/dev/null 2>&1 || return 1
+    v=$(cloudfleet --version 2>/dev/null | awk '{print $NF}' | sed -E 's/^v//; s/[-+].*$//')
+    printf '%s' "$v" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || return 1
+    IFS=. read -ra have <<<"$v"
+    IFS=. read -ra want <<<"$MIN_CLI_VERSION"
+    for i in 0 1 2; do
+        [ "${have[$i]}" -gt "${want[$i]}" ] && return 0
+        [ "${have[$i]}" -lt "${want[$i]}" ] && return 1
+    done
+    return 0
+}
+
+# The previous turn runs from the last human prompt to the end of the transcript.
+# Text, tool calls, tool results and hook output all count, as in Stripe's
+# transcriptHelpers.mjs. A window with no human prompt in it is scanned whole.
+last_turn_mentions_cloudfleet() {
+    local t
+    printf '%s' "$(field .last_assistant_message)" | grep -qiE "$MENTION_RE" && return 0
+    t=$(field .transcript_path)
+    [ -f "$t" ] || return 1
+    tail -c "$TRANSCRIPT_TAIL_BYTES" "$t" | tail -n +2 |
+        jq -R 'fromjson?' |
+        jq -se --arg re "$MENTION_RE" '
+            def txt: if type == "string" then . elif . == null then "" else tojson end;
+            def results: if type == "string" then .
+                elif type == "array" then map(if type == "object" and .type == "text" then (.text | txt) else "" end) | join("\n")
+                else "" end;
+            def block: if type == "string" then .
+                elif type != "object" then ""
+                elif .type == "text" then (.text | txt)
+                elif .type == "tool_use" then (.name | txt) + "\n" + (.input | txt)
+                elif .type == "tool_result" then (.content | results)
+                else "" end;
+            def content: if type == "string" then . elif type == "array" then map(block) | join("\n") else "" end;
+            def hook_output: if ((.type? // "") | tostring | startswith("hook_"))
+                then [.content, .stdout, .stderr] | map(txt) | join("\n") else "" end;
+            def text: ((.message.content? // null) | content) + "\n" + ((.attachment? // null) | hook_output);
+            def human: .type == "user" and (.isMeta != true) and (.isSynthetic != true)
+                and ((.message.content | type) == "string"
+                     or ((.message.content | type) == "array" and any(.message.content[]; .type? != "tool_result")));
+            . as $e
+            | ([range(0; $e | length) | select($e[.] | human)] | last // 0) as $start
+            | $e[$start:] | any(.[]; text | test($re; "i"))
+        ' >/dev/null 2>&1
+}
+
+batch_failed() {
+    printf '%s' "$1" | jq -e '
+        def failed: if type == "array" then any(.[]; failed)
+            elif type == "object" then (.is_error == true or .isError == true or (.error | failed) or (.content | failed))
+            elif type == "string" then test("^\\s*(error\\b|exit code \\d+\\b|mcp error\\b|tool use error\\b|<tool_use_error>)"; "i")
+            else false end;
+        .tool_response | failed' >/dev/null 2>&1
+}
+
+KIND=""
+case "$EVENT" in
+    PostToolUseFailure)
+        [ "$(field .is_interrupt)" = true ] && exit 0
+        is_cloudfleet_call "$INPUT" || exit 0
+        KIND=failure
+        ;;
+    PostToolBatch)
+        [ -e "$ASKED" ] && exit 0
+        used=false
+        while IFS= read -r call; do
+            is_cloudfleet_call "$call" || continue
+            batch_failed "$call" && exit 0
+            used=true
+        done < <(printf '%s' "$INPUT" | jq -c '.tool_calls[]? | objects' 2>/dev/null)
+        [ "$used" = true ] || exit 0
+        sampled "$PER_TOOL_RATE" || exit 0
+        KIND=batch
+        ;;
+    PostToolUse)
+        [ "$(field .tool_name)" = Agent ] || exit 0
+        [ "$(field .tool_response.status)" = completed ] || exit 0
+        [ -e "$ASKED" ] && exit 0
+        printf '%s' "$INPUT" | jq -r '[.tool_input.prompt, .tool_response.content] | map(if type == "string" then . else tojson end) | join("\n")' |
+            grep -qiE "$MENTION_RE" || exit 0
+        sampled "$PER_TOOL_RATE" || exit 0
+        KIND=agent
+        ;;
+    UserPromptSubmit)
+        [ -e "$ASKED" ] && exit 0
+        sampled "$PER_TURN_RATE" || exit 0
+        last_turn_mentions_cloudfleet || exit 0
+        KIND=turn
+        ;;
+    *) exit 0 ;;
+esac
+
+cli_supported || exit 0
+
+PLUGIN_VERSION=$(jq -r '.version // empty' "${0%/*}/../.claude-plugin/plugin.json" 2>/dev/null)
+CLIENT="cloudfleet-plugin-claude/${PLUGIN_VERSION:-unknown}"
+
+CRITERIA="If it was useful, confusing, wrong, or incomplete, send Cloudfleet feedback."
+EXAMPLE="For example: \`cloudfleet feedback --sentiment neutral --message \"The fleet docs did not say constraints default to amd64\" --context \"Creating a Hetzner fleet with Terraform\" --source plugin --client $CLIENT\`, or the \`feedback_send\` MCP tool with the same fields."
+OPTIONS="Use positive, neutral, or negative honestly. Do not include secrets, kubeconfig contents, or customer data. \`cloudfleet feedback --help\` lists every option."
+APPROVAL="Before submitting, show the prospective feedback to the user and ask for approval, mentioning that the Cloudfleet team reads feedback but does not reply, so anything that needs an answer belongs in a support ticket."
+
+case "$KIND" in
+    failure) MSG="The Cloudfleet tool failed. Send Cloudfleet feedback explaining what you were trying to do and what failed. $EXAMPLE $OPTIONS Then continue resolving the failure and the user's task. $APPROVAL" ;;
+    batch) MSG="Assess the Cloudfleet skills, MCP tools, or CLI commands used in this batch. If any were useful, confusing, wrong, or incomplete, send Cloudfleet feedback. $EXAMPLE $OPTIONS Then continue the user's task. $APPROVAL" ;;
+    agent) MSG="Assess the completed subagent's Cloudfleet-related work. $CRITERIA $EXAMPLE $OPTIONS Then continue the user's task. $APPROVAL" ;;
+    turn) MSG="Assess the preceding Cloudfleet work before handling the new message. $CRITERIA $EXAMPLE $OPTIONS Then continue by responding to the user's new message. $APPROVAL" ;;
+esac
+
+if [ "$KIND" = failure ]; then
+    jq -n --arg r "$MSG" '{decision: "block", reason: $r}'
+else
+    : >"$ASKED" 2>/dev/null
+    jq -n --arg e "$EVENT" --arg c "$MSG" '{hookSpecificOutput: {hookEventName: $e, additionalContext: $c}}'
+fi
+exit 0

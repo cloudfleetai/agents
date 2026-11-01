@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# Test suite for the feedback hook. Uses a fake `cloudfleet` on PATH for the
+# version gate, a private TMPDIR for the per-session markers, and a fixed
+# CLOUDFLEET_FEEDBACK_ROLL so sampling is deterministic.
+
+set -uo pipefail
+
+HOOK="$(cd "$(dirname "$0")" && pwd)/feedback-hook"
+PLUGIN_VERSION=$(jq -r .version "$(dirname "$HOOK")/../.claude-plugin/plugin.json")
+MCP=mcp__plugin_cloudfleet_cloudfleet__
+passed=0
+failed=0
+
+T=$(mktemp -d)
+trap 'rm -rf "$T"' EXIT
+mkdir -p "$T/bin" "$T/markers"
+
+fake_cli() {
+    printf '#!/bin/sh\necho "cloudfleet version %s"\n' "$1" >"$T/bin/cloudfleet"
+    chmod +x "$T/bin/cloudfleet"
+}
+fake_cli 1.10.0
+
+session=0
+new_session() { session=$((session + 1)); }
+
+# Transcript fixtures, one JSON object per line as Claude Code writes them. The
+# first line stands in for the partial line a byte-offset tail starts with.
+human() { jq -cn --arg t "$1" '{type: "user", message: {content: $t}}'; }
+said() { jq -cn --arg t "$1" '{type: "assistant", message: {content: [{type: "text", text: $t}]}}'; }
+used() { jq -cn --arg n "$1" --argjson i "$2" '{type: "assistant", message: {content: [{type: "tool_use", name: $n, input: $i}]}}'; }
+result() { jq -cn --arg t "$1" '{type: "user", message: {content: [{type: "tool_result", content: $t}]}}'; }
+transcript() { local f="$T/$1.jsonl"; shift; { echo '{"partial'; printf '%s\n' "$@"; } >"$f"; printf '%s' "$f"; }
+
+T_TOOL=$(transcript tool "$(human 'list my stuff')" "$(used "${MCP}clusters_list" '{}')" "$(said 'Done.')")
+T_RESULT=$(transcript result "$(human 'what is running?')" "$(used Bash '{"command":"kubectl get ns"}')" "$(result 'cfke-system   Active')")
+T_TEXT=$(transcript text "$(human 'hi')" "$(said 'Your CFCR registry is ready.')")
+T_OLD=$(transcript old "$(human 'old question')" "$(said 'Cloudfleet answer')" "$(human 'unrelated')" "$(said 'Sure, here is a poem.')")
+T_HOOK=$(transcript hook "$(human 'run it')" '{"type":"attachment","attachment":{"type":"hook_success","stdout":"Blocked: not a CFKE cluster"}}')
+T_NOHUMAN=$(transcript nohuman "$(said 'cloudfleet clusters list returned 2 clusters')")
+
+# run <roll> <event json, without session_id> -> hook stdout
+run() {
+    printf '%s' "$2" |
+        jq -c --arg s "test-$session" '. + {session_id: $s}' |
+        PATH="$T/bin:$PATH" TMPDIR="$T/markers" CLOUDFLEET_FEEDBACK_ROLL="$1" "$HOOK" 2>/dev/null
+}
+
+kind() {
+    if [ -z "$1" ]; then echo none
+    elif printf '%s' "$1" | jq -e '.decision == "block" and (.reason | length > 0)' >/dev/null 2>&1; then echo steer
+    elif printf '%s' "$1" | jq -e '.hookSpecificOutput.additionalContext | length > 0' >/dev/null 2>&1; then echo context
+    else echo "invalid output"
+    fi
+}
+
+# expect <none|context|steer> <description> <roll> <event json>
+expect() {
+    local want="$1" desc="$2" got
+    LAST_OUT=$(run "$3" "$4")
+    got=$(kind "$LAST_OUT")
+    if [ "$got" = "$want" ]; then
+        printf '  ok       %s\n' "$desc"
+        passed=$((passed + 1))
+    else
+        printf '  FAIL     %s (wanted %s, got %s)\n' "$desc" "$want" "$got"
+        failed=$((failed + 1))
+    fi
+}
+
+check() {
+    if eval "$2"; then
+        printf '  ok       %s\n' "$1"
+        passed=$((passed + 1))
+    else
+        printf '  FAIL     %s\n' "$1"
+        failed=$((failed + 1))
+    fi
+}
+
+failure() { local i='{}'; [ $# -ge 2 ] && i=$2; jq -cn --arg n "$1" --argjson i "$i" '{hook_event_name: "PostToolUseFailure", tool_name: $n, tool_input: $i, error: "boom", is_interrupt: false}'; }
+bash_failure() { failure Bash "$(jq -cn --arg c "$1" '{command: $c}')"; }
+batch() { jq -cn --argjson c "$1" '{hook_event_name: "PostToolBatch", tool_calls: $c}'; }
+agent() { jq -cn --arg p "$1" --arg r "$2" --arg s "${3:-completed}" '{hook_event_name: "PostToolUse", tool_name: "Agent", tool_input: {prompt: $p}, tool_response: {status: $s, content: [{type: "text", text: $r}]}}'; }
+prompt() { jq -cn --arg t "$1" '{hook_event_name: "UserPromptSubmit", prompt: "next", transcript_path: $t}'; }
+
+echo "Tool failure (steers every time):"
+new_session
+expect steer "Cloudfleet MCP tool" 99 "$(failure "${MCP}clusters_get")"
+check "steer names the plugin client" 'printf "%s" "$LAST_OUT" | grep -qF "cloudfleet-plugin-claude/$PLUGIN_VERSION"'
+check "steer uses only flags the CLI has" '! printf "%s" "$LAST_OUT" | grep -qF -- "--area"'
+expect steer "again in the same session" 99 "$(failure "${MCP}clusters_get")"
+expect steer "cloudfleet: skill" 99 "$(failure Skill '{"skill":"cloudfleet:cluster-setup"}')"
+expect steer "cloudfleet CLI command" 99 "$(bash_failure 'cloudfleet clusters list')"
+expect steer "cloudfleet later in a command line" 99 "$(bash_failure 'cd infra && cloudfleet clusters list | jq .')"
+expect none "feedback_send itself" 99 "$(failure "${MCP}feedback_send")"
+expect none "cloudfleet feedback itself" 99 "$(bash_failure 'cloudfleet feedback --sentiment negative --message x')"
+expect none "another plugin's skill" 99 "$(failure Skill '{"skill":"stripe:test-cards"}')"
+expect none "another MCP server" 99 "$(failure mcp__github__get_issue)"
+expect none "kubectl" 99 "$(bash_failure 'kubectl get pods')"
+expect none "cloudfleet only in a path" 99 "$(bash_failure 'cd ~/projects/cloudfleet && make')"
+expect none "interrupted by the user" 99 "$(failure "${MCP}clusters_get" | jq -c '.is_interrupt = true')"
+
+echo
+echo "Tool batch (sampled, once per session):"
+ok_call=$(jq -cn --arg n "${MCP}clusters_list" '{tool_name: $n, tool_input: {}, tool_response: [{type: "text", text: "[]"}]}')
+cli_call='{"tool_name":"Bash","tool_input":{"command":"cloudfleet clusters list"},"tool_response":{"stdout":"[]"}}'
+bad_call=$(jq -cn --arg n "${MCP}clusters_get" '{tool_name: $n, tool_input: {}, tool_response: {isError: true}}')
+bad_cli='{"tool_name":"Bash","tool_input":{"command":"cloudfleet clusters get x"},"tool_response":"Exit code 1\nnot found"}'
+read_call='{"tool_name":"Read","tool_input":{"file_path":"/x"},"tool_response":"cloudfleet"}'
+new_session
+expect none "roll above the rate" 1 "$(batch "[$ok_call]")"
+expect context "Cloudfleet MCP tool, roll under the rate" 0 "$(batch "[$read_call,$ok_call]")"
+check "context names the event" '[ "$(printf "%s" "$LAST_OUT" | jq -r .hookSpecificOutput.hookEventName)" = PostToolBatch ]'
+expect none "second ask in the same session" 0 "$(batch "[$ok_call]")"
+new_session
+expect context "cloudfleet CLI command" 0 "$(batch "[$cli_call]")"
+new_session
+expect none "a Cloudfleet call failed (the failure hook covers it)" 0 "$(batch "[$ok_call,$bad_call]")"
+expect none "a cloudfleet command exited non-zero" 0 "$(batch "[$bad_cli]")"
+expect none "no Cloudfleet call" 0 "$(batch "[$read_call]")"
+
+echo
+echo "Subagent (sampled, once per session):"
+new_session
+expect none "roll above the rate" 1 "$(agent 'Diagnose the CFKE cluster' 'Found the issue')"
+expect context "completed work mentioning Cloudfleet" 0 "$(agent 'Diagnose the cluster' 'The cloudfleet fleet is not ready')"
+expect none "second ask in the same session" 0 "$(agent 'Diagnose the CFKE cluster' 'ok')"
+new_session
+expect none "no mention" 0 "$(agent 'Refactor the parser' 'Done')"
+expect none "not completed" 0 "$(agent 'Diagnose the CFKE cluster' 'ok' running)"
+
+echo
+echo "Prompt after a turn mentioning Cloudfleet (sampled, once per session):"
+new_session
+expect none "roll above the rate" 10 "$(prompt "$T_TOOL")"
+expect context "MCP tool call in the last turn" 0 "$(prompt "$T_TOOL")"
+check "context names the event" '[ "$(printf "%s" "$LAST_OUT" | jq -r .hookSpecificOutput.hookEventName)" = UserPromptSubmit ]'
+expect none "second ask in the same session" 0 "$(prompt "$T_TOOL")"
+new_session
+expect context "tool result in the last turn" 0 "$(prompt "$T_RESULT")"
+new_session
+expect context "assistant text in the last turn" 0 "$(prompt "$T_TEXT")"
+new_session
+expect context "hook output in the last turn" 0 "$(prompt "$T_HOOK")"
+new_session
+expect context "no human prompt in the window: scanned whole" 0 "$(prompt "$T_NOHUMAN")"
+new_session
+expect context "last_assistant_message in the event" 0 \
+    "$(prompt "$T/missing.jsonl" | jq -c '.last_assistant_message = "Cloudfleet cluster created"')"
+new_session
+expect none "mention only in an earlier turn" 0 "$(prompt "$T_OLD")"
+expect none "missing transcript" 0 "$(prompt "$T/missing.jsonl")"
+
+echo
+echo "CLI version gate (feedback needs 1.10.0+):"
+for v in 1.9.9 0.12.0 dev; do
+    fake_cli "$v"
+    expect none "CLI $v" 99 "$(failure "${MCP}clusters_get")"
+done
+for v in 1.10.0 1.12.3 2.0.0; do
+    fake_cli "$v"
+    expect steer "CLI $v" 99 "$(failure "${MCP}clusters_get")"
+done
+rm "$T/bin/cloudfleet"
+expect none "CLI not installed" 99 "$(failure "${MCP}clusters_get")"
+fake_cli 1.10.0
+
+echo
+echo "Missing jq fails open:"
+d=$(mktemp -d)
+for b in bash grep cat sed tr head tail awk; do
+    ln -s "$(command -v "$b")" "$d/$b" 2>/dev/null
+done
+ln -s "$T/bin/cloudfleet" "$d/cloudfleet"
+out=$(printf '{"hook_event_name":"PostToolUseFailure","session_id":"x","tool_name":"%sclusters_get"}' "$MCP" |
+    env -i PATH="$d" TMPDIR="$T/markers" CLOUDFLEET_FEEDBACK_ROLL=0 "$HOOK" 2>/dev/null)
+rc=$?
+check "jq missing: exit 0, no output" '[ "$rc" -eq 0 ] && [ -z "$out" ]'
+rm -rf "$d"
+
+echo
+printf '%s passed, %s failed\n' "$passed" "$failed"
+[ "$failed" -eq 0 ]
