@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "postToolUse": [
+      {
+        "command": "\"${CURSOR_PLUGIN_ROOT}/scripts/feedback-hook\" cursor postToolUse",
+        "timeout": 5
+      }
+    ]
+  }
+}

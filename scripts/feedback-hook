@@ -4,8 +4,9 @@
 # send Cloudfleet feedback after the user approves the draft.
 #
 # The first argument names the harness: none for Claude Code, `codex` for Codex,
-# `copilot` for Copilot CLI, `antigravity` for Antigravity. Copilot's and
-# Antigravity's payloads carry no event name, so the second argument names it.
+# `copilot` for Copilot CLI, `antigravity` for Antigravity, `cursor` for Cursor.
+# Copilot's and Antigravity's payloads carry no event name, so the second
+# argument names it; Cursor's entries pass it too.
 #
 # Claude Code
 # Event                 Condition                                       Rate
@@ -45,6 +46,11 @@
 # PreInvocation (0)     first model call of a turn, previous turn made   PER_TURN_RATE
 #                       a Cloudfleet call
 #
+# Cursor reads hooks/cursor.json through .cursor-plugin/plugin.json. Of its
+# events, a plugin's hooks get only postToolUse, and only for calls that
+# succeeded, so Cursor has no failure or next-turn prompts.
+# postToolUse           a Cloudfleet call succeeded                      PER_TOOL_RATE
+#
 # Sampled prompts fire at most once per session. Failures steer every time,
 # except failures of the feedback command itself.
 #
@@ -68,6 +74,7 @@ case "$HARNESS" in
     codex) MCP_PREFIX='mcp__cloudfleet__' MANIFEST=.codex-plugin/plugin.json ;;
     copilot) MCP_PREFIX='cloudfleet-' MANIFEST=.claude-plugin/plugin.json ;;
     antigravity) MCP_PREFIX='cloudfleet_cloudfleet/' MANIFEST=.claude-plugin/plugin.json ;;
+    cursor) MCP_PREFIX='cloudfleet:' MANIFEST=.cursor-plugin/plugin.json ;;
     *) exit 0 ;;
 esac
 [ "$HARNESS" = claude ] && [ -n "${COPILOT_PLUGIN_ROOT:-}" ] && exit 0
@@ -98,6 +105,14 @@ if [ "$HARNESS" = copilot ]; then
         tool_name: (if .toolName == "bash" then "Bash" else .toolName end),
         tool_input: (.toolArgs | if type == "string" then (fromjson? // {}) else . end),
         tool_response: .toolResult, error}' 2>/dev/null) || exit 0
+elif [ "$HARNESS" = cursor ]; then
+    # Cursor names MCP tools "MCP:<tool>" without the server, so Cloudfleet's
+    # are recognised by name.
+    INPUT=$(printf '%s' "$RAW_INPUT" | jq -c --arg e "${2:-}" '{
+        hook_event_name: $e, session_id: .conversation_id, tool_input,
+        tool_name: (.tool_name // "" | if . == "Shell" then "Bash"
+            elif test("^MCP:(who_am_i|clusters_[a-z_]+|tickets_[a-z_]+|feedback_send)$") then "cloudfleet:" + .[4:]
+            else . end)}' 2>/dev/null) || exit 0
 elif [ "$HARNESS" = antigravity ]; then
     INPUT=$(printf '%s' "$RAW_INPUT" | jq -c --arg e "${2:-}" '{
         hook_event_name: $e, session_id: .conversationId, transcript_path: .transcriptPath,
@@ -265,6 +280,12 @@ antigravity_step_failed() {
 
 KIND=""
 case "$HARNESS:$EVENT" in
+    cursor:postToolUse)
+        is_cloudfleet_call "$INPUT" || exit 0
+        [ -e "$ASKED" ] && exit 0
+        sampled "$PER_TOOL_RATE" || exit 0
+        KIND=tool
+        ;;
     antigravity:PostToolUse)
         is_cloudfleet_call "$INPUT" || exit 0
         : >"$USED" 2>/dev/null
@@ -398,6 +419,9 @@ esac
 
 if [ "$KIND" = failure ] && [ "$HARNESS" = claude ]; then
     OUTPUT=$(jq -cn --arg r "$MSG" '{decision: "block", reason: $r}')
+elif [ "$HARNESS" = cursor ]; then
+    : >"$ASKED" 2>/dev/null
+    OUTPUT=$(jq -cn --arg c "$MSG" '{additional_context: $c}')
 elif [ "$HARNESS" = antigravity ]; then
     [ "$KIND" = failure ] || : >"$ASKED" 2>/dev/null
     OUTPUT=$(jq -cn --arg c "$MSG" '{injectSteps: [{ephemeralMessage: $c}]}')

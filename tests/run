@@ -61,6 +61,11 @@ live() {
     check "next prompt assesses the Cloudfleet turn" \
         "log_has '.event == \"$H_PROMPT_EVENT\" and (.output | tojson | contains(\"Assess the preceding Cloudfleet work\"))'"
 
+    shapes_step "$1"
+}
+
+# Compares (or with --record, saves) the hook input shapes of this run.
+shapes_step() {
     local shapes snapshot="$TESTS/shapes/$1.json"
     shapes=$(log_shapes)
     if [ "$RECORD" = 1 ]; then
@@ -106,11 +111,16 @@ run_harness() (
     local hooks
     if hooks=$(h_hooks); then
         same_set "hooks from $H_HOOK_FILE" "$(hook_events "$H_HOOK_FILE" | sed "s|\$| $H_HOOK_FILE|")" "$hooks"
+    elif [ "$H_HOOK_FILE" = none ]; then
+        skip "$1 plugins carry no hooks"
     else
         skip "hooks are not listed by $1 (--live shows they fire)"
     fi
 
-    [ "$LIVE" = 1 ] && live "$1"
+    if [ "$LIVE" = 1 ]; then
+        export CLOUDFLEET_FEEDBACK_LOG="$HOOK_LOG"
+        if declare -F h_live >/dev/null; then h_live; else live "$1"; fi
+    fi
     return 0
 )
 

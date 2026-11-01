@@ -1,0 +1,93 @@
+{
+  "postToolUse:mcp:who_am_i": {
+    "conversation_id": [
+      "string"
+    ],
+    "cursor_version": [
+      "string"
+    ],
+    "duration": [
+      "number"
+    ],
+    "generation_id": [
+      "string"
+    ],
+    "hook_event_name": [
+      "string"
+    ],
+    "model": [
+      "string"
+    ],
+    "session_id": [
+      "string"
+    ],
+    "tool_input": [
+      "object"
+    ],
+    "tool_name": [
+      "string"
+    ],
+    "tool_output": [
+      "string"
+    ],
+    "tool_use_id": [
+      "string"
+    ],
+    "transcript_path": [
+      "string"
+    ],
+    "user_email": [
+      "string"
+    ],
+    "workspace_roots": [
+      "array"
+    ]
+  },
+  "postToolUse:shell": {
+    "conversation_id": [
+      "string"
+    ],
+    "cursor_version": [
+      "string"
+    ],
+    "cwd": [
+      "string"
+    ],
+    "duration": [
+      "number"
+    ],
+    "generation_id": [
+      "string"
+    ],
+    "hook_event_name": [
+      "string"
+    ],
+    "model": [
+      "string"
+    ],
+    "session_id": [
+      "string"
+    ],
+    "tool_input": [
+      "object"
+    ],
+    "tool_name": [
+      "string"
+    ],
+    "tool_output": [
+      "string"
+    ],
+    "tool_use_id": [
+      "string"
+    ],
+    "transcript_path": [
+      "string"
+    ],
+    "user_email": [
+      "string"
+    ],
+    "workspace_roots": [
+      "array"
+    ]
+  }
+}

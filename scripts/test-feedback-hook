@@ -298,6 +298,29 @@ check "CLI not installed: no output" '[ -z "$out" ]'
 rm -rf "$nocli"
 
 echo
+echo "Cursor (postToolUse only, successful calls):"
+cu_call() { jq -cn --arg n "$1" --argjson i "$2" --arg s "test-$session" '{conversation_id: $s, hook_event_name: "postToolUse", tool_name: $n, tool_input: $i, tool_output: "{}"}'; }
+cu_context() { printf '%s' "$LAST_OUT" | jq -e '.additional_context | length > 0' >/dev/null 2>&1; }
+new_session
+LAST_OUT=$(run 1 "$(cu_call Shell '{"command":"cloudfleet clusters list"}')" "cursor postToolUse")
+check "cloudfleet command, roll above the rate: nothing" '[ -z "$LAST_OUT" ]'
+LAST_OUT=$(run 0 "$(cu_call Shell '{"command":"cloudfleet clusters list"}')" "cursor postToolUse")
+check "cloudfleet command, roll under the rate" 'cu_context'
+check "  ...names the Cursor client" 'printf "%s" "$LAST_OUT" | grep -qF "cloudfleet-plugin-cursor/$(jq -r .version "$(dirname "$HOOK")/../.cursor-plugin/plugin.json")"'
+LAST_OUT=$(run 0 "$(cu_call MCP:who_am_i '{}')" "cursor postToolUse")
+check "second ask in the same session: nothing" '[ -z "$LAST_OUT" ]'
+new_session
+LAST_OUT=$(run 0 "$(cu_call MCP:who_am_i '{}')" "cursor postToolUse")
+check "Cloudfleet MCP tool" 'cu_context'
+new_session
+LAST_OUT=$(run 0 "$(cu_call MCP:get_issue '{}')" "cursor postToolUse")
+check "another server's MCP tool: nothing" '[ -z "$LAST_OUT" ]'
+LAST_OUT=$(run 0 "$(cu_call MCP:feedback_send '{}')" "cursor postToolUse")
+check "feedback_send: nothing" '[ -z "$LAST_OUT" ]'
+LAST_OUT=$(run 0 "$(cu_call Shell '{"command":"kubectl get pods"}')" "cursor postToolUse")
+check "kubectl: nothing" '[ -z "$LAST_OUT" ]'
+
+echo
 echo "hooks/hooks.json layout (shared by Claude Code, Copilot CLI and Antigravity):"
 HOOKS_JSON="$(dirname "$HOOK")/../hooks/hooks.json"
 # Antigravity decodes the file with Go, which matches keys case-insensitively

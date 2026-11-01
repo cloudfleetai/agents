@@ -5,7 +5,7 @@
 ## Features
 
 - **Preconfigured MCP server** — query clusters, list resources, and get cluster info without local setup
-- **Feedback prompts**: modelled on the Stripe plugin. When a Cloudfleet skill, MCP tool or CLI command fails, and occasionally after Cloudfleet work, hooks ask the agent to assess it and offer to send feedback through the `feedback_send` MCP tool, or `cloudfleet feedback` on CLI 1.10.0+. The agent shows the draft and sends only after you approve. Works in Claude Code, Codex, Copilot CLI and Antigravity.
+- **Feedback prompts**: modelled on the Stripe plugin. When a Cloudfleet skill, MCP tool or CLI command fails, and occasionally after Cloudfleet work, hooks ask the agent to assess it and offer to send feedback through the `feedback_send` MCP tool, or `cloudfleet feedback` on CLI 1.10.0+. The agent shows the draft and sends only after you approve. Works in Claude Code, Codex, Copilot CLI and Antigravity; Cursor gets only the sampled prompt after successful calls, and Kiro has no plugin hooks.
 - **Reaching Cloudfleet**: the `contact` skill routes between support tickets (anything that needs an answer or an investigation), the roadmap (see, vote on, or suggest concrete features), and feedback (quick one-way notes).
 - **Background knowledge** — CFKE architecture, CFCR usage, best practices (resource requests, load balancers, node placement) auto-triggered when relevant
 - **Guided workflows** — cluster setup via the CLI or Terraform, fleet configuration, self-managed nodes, debugging
@@ -44,6 +44,24 @@ agy plugin install https://github.com/cloudfleetai/cloudfleet-plugin-claude
 
 Antigravity imports the plugin into `~/.gemini/config/plugins/cloudfleet`; reinstall to update.
 
+### Cursor
+
+```bash
+cursor-agent plugin marketplace add https://github.com/cloudfleetai/cloudfleet-plugin-claude
+```
+
+Then install **cloudfleet** with `/plugins` in `cursor-agent`, or from Customize in the Cursor app. Cursor has no command that installs a plugin. A plugin's hooks get only `postToolUse`, for successful calls, so Cursor gets the occasional feedback prompt after Cloudfleet work, but none on failures or on the next turn.
+
+### Kiro CLI
+
+Kiro loads the plugin as a power, through `.kiro-power/` (a root `plugin.json` would break other harnesses). Only the V3 engine (`kiro-cli --v3`) loads it, and powers carry no hooks, so Kiro gets the skills and the MCP server but no feedback prompts. From a clone:
+
+```bash
+kiro-cli powers install /path/to/cloudfleet-plugin-claude/.kiro-power
+```
+
+`.kiro-power/skills` is a symlink, and Kiro keeps it, so the clone must stay in place.
+
 ### Local development
 
 Claude Code loads the working copy directly:
@@ -81,6 +99,8 @@ How each harness finds the plugin:
 | Claude Code | `.claude-plugin/plugin.json` | PascalCase events in `hooks/hooks.json` |
 | Codex | `.codex-plugin/plugin.json` | `hooks/codex.json` |
 | Copilot CLI | `.claude-plugin/plugin.json` | camelCase events in `hooks/hooks.json`; it also fires the PascalCase entries, which the hook ignores there |
+| Cursor | `.cursor-plugin/plugin.json` | `hooks/cursor.json` (postToolUse only) |
+| Kiro CLI (V3) | `.kiro-power/plugin.json` | none: powers carry no hooks |
 | Antigravity | converted from `.claude-plugin/plugin.json` on install | `hooks/hooks.json`, read as one named hook: its `PostToolUse` group for `run_command` and `call_mcp_tool`, and `PreInvocation` |
 
 The harnesses have different hook events and payloads, so `scripts/feedback-hook` takes the harness as its first argument. Root-level files that would be cleaner each break another harness: a root `plugin.json` (Agent Plugins format) stops Codex 0.166 from loading plugin hooks, and a root `hooks.json` in Antigravity's format makes Copilot reject the plugin's hooks. `hooks/hooks.json` has two constraints that `scripts/test-feedback-hook` checks: `hooks` must be its only top-level key, and `postToolUse` must come before `PostToolUse`, because Antigravity matches keys case-insensitively and keeps the last one.
@@ -96,7 +116,7 @@ tests/run --live codex    # one harness
 tests/run --live --record # after a harness update changed its hook input on purpose
 ```
 
-Live runs check that the feedback hook sees MCP calls, prompts when a `cloudfleet` command fails, and assesses the next turn, then compare each hook input's fields and types with `tests/shapes/<harness>.json`. Each harness runs against a throwaway home (Codex, Copilot CLI), with user settings and plugins left out (Claude Code), or installs into the real home and uninstalls afterwards (Antigravity, which refuses to start if cloudfleet is already installed), and cannot send real feedback. Small models occasionally skip a requested tool call, so rerun a single failed live check before suspecting the plugin. To add a harness, write an adapter with the same functions as `tests/harness/codex.sh`.
+Live runs check that the feedback hook sees MCP calls, prompts when a `cloudfleet` command fails, and assesses the next turn, then compare each hook input's fields and types with `tests/shapes/<harness>.json`. Each harness runs against a throwaway home (Codex, Copilot CLI), with user settings and plugins left out (Claude Code), installs into the real home and uninstalls afterwards (Antigravity and Kiro, which refuse to start if cloudfleet is already installed), or syncs the working copy over Cursor's cached install and restores it afterwards (Cursor, which needs cloudfleet installed once through `/plugins`), and cannot send real feedback. Small models occasionally skip a requested tool call, so rerun a single failed live check before suspecting the plugin. To add a harness, write an adapter with the same functions as `tests/harness/codex.sh`.
 
 Validate and lint before submitting changes:
 

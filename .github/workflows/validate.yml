@@ -19,7 +19,7 @@ jobs:
 
       - name: Manifest versions match
         run: |
-          versions=$(jq -r '.version' .claude-plugin/plugin.json .codex-plugin/plugin.json
+          versions=$(jq -r '.version' .claude-plugin/plugin.json .codex-plugin/plugin.json .cursor-plugin/plugin.json .kiro-power/plugin.json
                      jq -r '.plugins[] | select(.name == "cloudfleet") | .version' .claude-plugin/marketplace.json)
           echo "$versions"
           [ "$(printf '%s\n' "$versions" | sort -u | wc -l)" -eq 1 ]
