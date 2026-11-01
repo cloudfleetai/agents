@@ -5,16 +5,10 @@
 ## Features
 
 - **Preconfigured MCP server** — query clusters, list resources, and get cluster info without local setup
-- **Feedback prompts**: modelled on the Stripe plugin. When a Cloudfleet skill, MCP tool or CLI command fails, and occasionally after Cloudfleet work, hooks ask the agent to assess it and offer to send feedback through the `feedback_send` MCP tool, or `cloudfleet feedback` on CLI 1.10.0+. The agent shows the draft and sends only after you approve. Works in Claude Code and Codex.
+- **Feedback prompts**: modelled on the Stripe plugin. When a Cloudfleet skill, MCP tool or CLI command fails, and occasionally after Cloudfleet work, hooks ask the agent to assess it and offer to send feedback through the `feedback_send` MCP tool, or `cloudfleet feedback` on CLI 1.10.0+. The agent shows the draft and sends only after you approve. Works in Claude Code, Codex and Copilot CLI.
 - **Reaching Cloudfleet**: the `contact` skill routes between support tickets (anything that needs an answer or an investigation), the roadmap (see, vote on, or suggest concrete features), and feedback (quick one-way notes).
 - **Background knowledge** — CFKE architecture, CFCR usage, best practices (resource requests, load balancers, node placement) auto-triggered when relevant
 - **Guided workflows** — cluster setup via the CLI or Terraform, fleet configuration, self-managed nodes, debugging
-
-## Configuration
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `enable_kubectl` | boolean | Enable kubectl for direct cluster access. When disabled, read-only MCP access is used. |
 
 ## Installation
 
@@ -35,6 +29,13 @@ codex plugin add cloudfleet@cloudfleet
 
 Codex runs the feedback hooks only after you trust them: it asks on the next launch, or review them under `/hooks`. Codex asks again after every plugin update, because trust covers the installed plugin's contents.
 
+### Copilot CLI
+
+```bash
+copilot plugin marketplace add cloudfleetai/cloudfleet-plugin-claude
+copilot plugin install cloudfleet@cloudfleet
+```
+
 ### Local development
 
 Claude Code loads the working copy directly:
@@ -54,7 +55,37 @@ codex plugin remove cloudfleet@cloudfleet && codex plugin add cloudfleet@cloudfl
 
 Each reinstall invalidates hook trust. For non-interactive test runs of hooks you have reviewed, pass `--dangerously-bypass-hook-trust` to `codex exec`.
 
-Codex reads `.codex-plugin/plugin.json`, which points it at `hooks/codex.json`; Claude Code reads `.claude-plugin/` and `hooks/hooks.json`. The two harnesses have different hook events, so each file lists only its own. A root `plugin.json` (Agent Plugins format) would stop Codex 0.166 from loading any plugin hooks, so there is none.
+Copilot CLI loads a plugin from a local marketplace live from the working copy, so changes take effect in the next session:
+
+```bash
+copilot plugin marketplace add /path/to/cloudfleet-plugin-claude
+copilot plugin install cloudfleet@cloudfleet
+```
+
+`tests/uninstall` removes the plugin and marketplace from every installed harness (and Codex's stored hook trust) before a manual test; `--dry-run` shows what is there.
+
+How each harness finds the plugin:
+
+| Harness | Manifest | Hooks |
+| --- | --- | --- |
+| Claude Code | `.claude-plugin/plugin.json` | PascalCase events in `hooks/hooks.json` |
+| Codex | `.codex-plugin/plugin.json` | `hooks/codex.json` |
+| Copilot CLI | `.claude-plugin/plugin.json` | camelCase events in `hooks/hooks.json`; it also fires the PascalCase entries, which the hook ignores there |
+
+The harnesses have different hook events and payloads, so `scripts/feedback-hook` takes the harness as its first argument. A root `plugin.json` (Agent Plugins format) would stop Codex 0.166 from loading any plugin hooks, so there is none.
+
+### Harness tests
+
+`tests/run` checks the working copy in every agent harness it has an adapter for (`tests/harness/*.sh`). It runs locally only, not in CI.
+
+```bash
+tests/run                 # discovery: install, skills, MCP server, hooks; no model calls
+tests/run --live          # also prompts each harness on its cheapest model (cents per run)
+tests/run --live codex    # one harness
+tests/run --live --record # after a harness update changed its hook input on purpose
+```
+
+Live runs check that the feedback hook sees MCP calls, prompts when a `cloudfleet` command fails, and assesses the next turn, then compare each hook input's fields and types with `tests/shapes/<harness>.json`. Each harness runs against a throwaway home (Codex, Copilot CLI) or with user settings and plugins left out (Claude Code), and cannot send real feedback. To add a harness, write an adapter with the same functions as `tests/harness/codex.sh`.
 
 Validate and lint before submitting changes:
 

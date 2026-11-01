@@ -20,13 +20,5 @@
         "docker",
         "cloud",
         "infrastructure"
-    ],
-    "userConfig": {
-        "enable_kubectl": {
-            "title": "Enable kubectl",
-            "description": "Enable kubectl for direct cluster access (read/write). When disabled, only the Cloudfleet MCP server (read-only) is used.",
-            "type": "boolean",
-            "sensitive": false
-        }
-    }
+    ]
 }

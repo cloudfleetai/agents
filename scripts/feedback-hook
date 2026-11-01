@@ -3,7 +3,9 @@
 # at moments when there is Cloudfleet work to judge, tell the agent to assess it and
 # send Cloudfleet feedback after the user approves the draft.
 #
-# The first argument names the harness: none for Claude Code, `codex` for Codex.
+# The first argument names the harness: none for Claude Code, `codex` for Codex,
+# `copilot` for Copilot CLI; Copilot's payloads carry no event name, so the
+# second argument names the event.
 #
 # Claude Code
 # Event                 Condition                                       Rate
@@ -22,6 +24,16 @@
 # Bash output without the exit code, which is read from the transcript instead.
 # Its `decision: block` replaces the tool result, so every Codex prompt is
 # additionalContext.
+#
+# Copilot CLI reads hooks/hooks.json too and also fires its Claude-format
+# entries; those exit here, and its own camelCase entries do the work.
+# postToolUse           a `cloudfleet` command exited non-zero           always
+# postToolUseFailure    a Cloudfleet MCP tool failed                     always
+# postToolUse           a Cloudfleet call succeeded                      PER_TOOL_RATE
+# userPromptSubmitted   the previous turn made a Cloudfleet call         PER_TURN_RATE
+# Copilot reports a failed command as a success and appends the exit code to
+# its output. Its prompt event has no transcript, so Cloudfleet calls leave a
+# per-session marker that the next prompt consumes.
 #
 # Sampled prompts fire at most once per session. Failures steer every time,
 # except failures of the feedback command itself.
@@ -44,12 +56,36 @@ HARNESS=${1:-claude}
 case "$HARNESS" in
     claude) MCP_PREFIX='mcp__plugin_cloudfleet_cloudfleet__' MANIFEST=.claude-plugin/plugin.json ;;
     codex) MCP_PREFIX='mcp__cloudfleet__' MANIFEST=.codex-plugin/plugin.json ;;
+    copilot) MCP_PREFIX='cloudfleet-' MANIFEST=.claude-plugin/plugin.json ;;
     *) exit 0 ;;
 esac
+[ "$HARNESS" = claude ] && [ -n "${COPILOT_PLUGIN_ROOT:-}" ] && exit 0
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-INPUT=$(cat)
+RAW_INPUT=$(cat)
+INPUT=$RAW_INPUT
+OUTPUT=""
+EVENT=""
+
+# Test seam for tests/run: one line per invocation with the input and output.
+log_invocation() {
+    [ -n "${CLOUDFLEET_FEEDBACK_LOG:-}" ] || return 0
+    jq -cn --arg h "$HARNESS" --arg e "$EVENT" --arg i "$RAW_INPUT" --arg o "$OUTPUT" \
+        '{harness: $h, event: $e, input: ($i | fromjson? // $i), output: (if $o == "" then null else ($o | fromjson? // $o) end)}' \
+        >>"$CLOUDFLEET_FEEDBACK_LOG" 2>/dev/null
+}
+trap log_invocation EXIT
+
+# Copilot's camelCase payload, mapped onto the field names used below.
+if [ "$HARNESS" = copilot ]; then
+    INPUT=$(printf '%s' "$RAW_INPUT" | jq -c --arg e "${2:-}" '{
+        hook_event_name: $e, session_id: .sessionId, prompt,
+        tool_name: (if .toolName == "bash" then "Bash" else .toolName end),
+        tool_input: (.toolArgs | if type == "string" then (fromjson? // {}) else . end),
+        tool_response: .toolResult, error}' 2>/dev/null) || exit 0
+fi
+
 field() { printf '%s' "$INPUT" | jq -r "$1 // empty" 2>/dev/null; }
 
 EVENT=$(field .hook_event_name)
@@ -61,6 +97,7 @@ SESSION=$(field .session_id | tr -cd 'A-Za-z0-9_-')
 
 MARKER_DIR=${TMPDIR:-/tmp}
 ASKED="${MARKER_DIR%/}/cloudfleet-feedback-${SESSION:-nosession}"
+USED="$ASKED-used"
 
 # Overridable so tests are deterministic.
 sampled() { [ "${CLOUDFLEET_FEEDBACK_ROLL:-$((RANDOM % 100))}" -lt "$1" ]; }
@@ -188,8 +225,37 @@ codex_last_turn_mentions_cloudfleet() {
         ' >/dev/null 2>&1
 }
 
+copilot_exit_code() {
+    field .tool_response.textResultForLlm | grep -oE 'completed with exit code [0-9]+>' | tail -n 1 | grep -oE '[0-9]+'
+}
+
 KIND=""
 case "$HARNESS:$EVENT" in
+    copilot:postToolUse)
+        is_cloudfleet_call "$INPUT" || exit 0
+        : >"$USED" 2>/dev/null
+        code=""
+        [ "$(field .tool_name)" = Bash ] && code=$(copilot_exit_code)
+        if [ -n "$code" ] && [ "$code" != 0 ]; then
+            KIND=failure
+        else
+            [ -e "$ASKED" ] && exit 0
+            sampled "$PER_TOOL_RATE" || exit 0
+            KIND=tool
+        fi
+        ;;
+    copilot:postToolUseFailure)
+        is_cloudfleet_call "$INPUT" || exit 0
+        : >"$USED" 2>/dev/null
+        KIND=failure
+        ;;
+    copilot:userPromptSubmitted)
+        [ -e "$USED" ] || exit 0
+        rm -f "$USED"
+        [ -e "$ASKED" ] && exit 0
+        sampled "$PER_TURN_RATE" || exit 0
+        KIND=turn
+        ;;
     codex:PostToolUse)
         is_cloudfleet_call "$INPUT" || exit 0
         if codex_call_failed; then
@@ -264,9 +330,13 @@ case "$KIND" in
 esac
 
 if [ "$KIND" = failure ] && [ "$HARNESS" = claude ]; then
-    jq -n --arg r "$MSG" '{decision: "block", reason: $r}'
+    OUTPUT=$(jq -cn --arg r "$MSG" '{decision: "block", reason: $r}')
+elif [ "$HARNESS" = copilot ]; then
+    [ "$KIND" = failure ] || : >"$ASKED" 2>/dev/null
+    OUTPUT=$(jq -cn --arg c "$MSG" '{additionalContext: $c}')
 else
     [ "$KIND" = failure ] || : >"$ASKED" 2>/dev/null
-    jq -n --arg e "$EVENT" --arg c "$MSG" '{hookSpecificOutput: {hookEventName: $e, additionalContext: $c}}'
+    OUTPUT=$(jq -cn --arg e "$EVENT" --arg c "$MSG" '{hookSpecificOutput: {hookEventName: $e, additionalContext: $c}}')
 fi
+printf '%s\n' "$OUTPUT"
 exit 0

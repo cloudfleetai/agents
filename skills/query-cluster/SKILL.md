@@ -9,7 +9,7 @@ argument-hint: "<cluster-id> <resource>"
 
 Query Kubernetes resources on a Cloudfleet cluster.
 
-kubectl enabled: **${user_config.enable_kubectl}**
+Check for kubectl with `command -v kubectl`. Use kubectl when it is installed, and the read-only Cloudfleet MCP server when it is not.
 
 ## Important Notes
 
@@ -27,7 +27,7 @@ If not provided in `$ARGUMENTS`, run `cloudfleet clusters list` (with `--profile
 
 ### 2. Determine access method and configure
 
-If kubectl is enabled, get an isolated kubeconfig:
+If kubectl is installed, get an isolated kubeconfig:
 
 ```bash
 KUBECONFIG="${TMPDIR:-/tmp}"; KUBECONFIG="${KUBECONFIG%/}/cloudfleet-$(id -u)/$CLUSTER_ID.kubeconfig"
@@ -40,7 +40,7 @@ The directory is per-user and private, so other local users cannot read or repla
 
 **Always use `kubectl --kubeconfig $KUBECONFIG`** — never bare `kubectl`, as the user's active context may point to a different cluster.
 
-If kubectl is not enabled, use the Cloudfleet MCP `clusters_query` tool. Note: **MCP provides read-only (GET) access only** — no create, update, delete, exec, logs, or port-forward operations. MCP only works with the `default` CLI profile — if the user has a non-default profile, prefer kubectl with `--profile`.
+If kubectl is not installed, use the Cloudfleet MCP `clusters_query` tool. Note: **MCP provides read-only (GET) access only** — no create, update, delete, exec, logs, or port-forward operations. MCP only works with the `default` CLI profile — if the user has a non-default profile, prefer kubectl with `--profile`.
 
 ### 3. Execute query
 

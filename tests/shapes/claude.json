@@ -1,0 +1,92 @@
+{
+  "PostToolBatch": {
+    "cwd": [
+      "string"
+    ],
+    "effort": [
+      "object"
+    ],
+    "hook_event_name": [
+      "string"
+    ],
+    "permission_mode": [
+      "string"
+    ],
+    "prompt_id": [
+      "string"
+    ],
+    "session_id": [
+      "string"
+    ],
+    "tool_calls": [
+      "array"
+    ],
+    "transcript_path": [
+      "string"
+    ]
+  },
+  "PostToolUseFailure:bash": {
+    "cwd": [
+      "string"
+    ],
+    "duration_ms": [
+      "number"
+    ],
+    "effort": [
+      "object"
+    ],
+    "error": [
+      "string"
+    ],
+    "hook_event_name": [
+      "string"
+    ],
+    "is_interrupt": [
+      "boolean"
+    ],
+    "permission_mode": [
+      "string"
+    ],
+    "prompt_id": [
+      "string"
+    ],
+    "session_id": [
+      "string"
+    ],
+    "tool_input": [
+      "object"
+    ],
+    "tool_name": [
+      "string"
+    ],
+    "tool_use_id": [
+      "string"
+    ],
+    "transcript_path": [
+      "string"
+    ]
+  },
+  "UserPromptSubmit": {
+    "cwd": [
+      "string"
+    ],
+    "hook_event_name": [
+      "string"
+    ],
+    "permission_mode": [
+      "string"
+    ],
+    "prompt": [
+      "string"
+    ],
+    "prompt_id": [
+      "string"
+    ],
+    "session_id": [
+      "string"
+    ],
+    "transcript_path": [
+      "string"
+    ]
+  }
+}

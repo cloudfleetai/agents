@@ -9,7 +9,7 @@ argument-hint: "[cluster-name-or-id]"
 
 Guided debugging workflow for Cloudfleet Kubernetes Engine clusters.
 
-kubectl enabled: **${user_config.enable_kubectl}**
+Check for kubectl with `command -v kubectl`. Use kubectl when it is installed, and the read-only Cloudfleet MCP server when it is not.
 
 ## Important Notes
 
@@ -29,7 +29,7 @@ kubectl enabled: **${user_config.enable_kubectl}**
 
 If a cluster name or ID was provided as `$ARGUMENTS`, use it. Otherwise, run `cloudfleet clusters list` (with `--profile` if specified) to show available clusters and ask the user which one to debug. Save the cluster ID as CLUSTER_ID.
 
-### 2. Configure kubectl access (if kubectl enabled)
+### 2. Configure kubectl access (if kubectl is installed)
 
 Get an isolated kubeconfig:
 
@@ -46,7 +46,7 @@ Use `kubectl --kubeconfig $KUBECONFIG` for ALL subsequent kubectl commands. **Ne
 
 ### 3. Gather cluster info
 
-**If kubectl is enabled:**
+**If kubectl is installed:**
 
 ```bash
 kubectl --kubeconfig $KUBECONFIG get nodes -o wide
@@ -54,7 +54,7 @@ kubectl --kubeconfig $KUBECONFIG get pods --all-namespaces --field-selector=stat
 kubectl --kubeconfig $KUBECONFIG get events --all-namespaces --sort-by='.lastTimestamp' | tail -30
 ```
 
-**If kubectl is not enabled**, use the Cloudfleet MCP `clusters_query` tool (read-only) to check:
+**If kubectl is not installed**, use the Cloudfleet MCP `clusters_query` tool (read-only) to check:
 
 - `/api/v1/nodes` — node status
 - `/api/v1/pods?fieldSelector=status.phase!=Running` — failing pods

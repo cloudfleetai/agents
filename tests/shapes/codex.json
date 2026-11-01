@@ -1,0 +1,98 @@
+{
+  "PostToolUse:bash": {
+    "cwd": [
+      "string"
+    ],
+    "hook_event_name": [
+      "string"
+    ],
+    "model": [
+      "string"
+    ],
+    "permission_mode": [
+      "string"
+    ],
+    "session_id": [
+      "string"
+    ],
+    "tool_input": [
+      "object"
+    ],
+    "tool_name": [
+      "string"
+    ],
+    "tool_response": [
+      "string"
+    ],
+    "tool_use_id": [
+      "string"
+    ],
+    "transcript_path": [
+      "string"
+    ],
+    "turn_id": [
+      "string"
+    ]
+  },
+  "PostToolUse:mcp": {
+    "cwd": [
+      "string"
+    ],
+    "hook_event_name": [
+      "string"
+    ],
+    "model": [
+      "string"
+    ],
+    "permission_mode": [
+      "string"
+    ],
+    "session_id": [
+      "string"
+    ],
+    "tool_input": [
+      "object"
+    ],
+    "tool_name": [
+      "string"
+    ],
+    "tool_response": [
+      "object"
+    ],
+    "tool_use_id": [
+      "string"
+    ],
+    "transcript_path": [
+      "string"
+    ],
+    "turn_id": [
+      "string"
+    ]
+  },
+  "UserPromptSubmit": {
+    "cwd": [
+      "string"
+    ],
+    "hook_event_name": [
+      "string"
+    ],
+    "model": [
+      "string"
+    ],
+    "permission_mode": [
+      "string"
+    ],
+    "prompt": [
+      "string"
+    ],
+    "session_id": [
+      "string"
+    ],
+    "transcript_path": [
+      "string"
+    ],
+    "turn_id": [
+      "string"
+    ]
+  }
+}

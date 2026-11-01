@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Removes this repo's plugin and marketplace from every installed harness, so
+# manual testing starts from a clean slate.
+#
+# Usage: tests/uninstall [--dry-run] [harness ...]
+#   harness    one of tests/harness/*.sh; default: all of them
+#   --dry-run  only show what is installed
+#
+# Works on the real homes (~/.claude, ~/.codex, ~/.copilot), or on whatever
+# CLAUDE_CONFIG_DIR, CODEX_HOME or COPILOT_HOME point at.
+
+set -uo pipefail
+
+REPO=$(cd "$(dirname "$0")/.." && pwd)
+TESTS="$REPO/tests"
+
+DRY=0
+HARNESSES=()
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY=1 ;;
+        -h | --help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*) echo "unknown option: $arg" >&2; exit 2 ;;
+        *)
+            [ -f "$TESTS/harness/$arg.sh" ] || { echo "no adapter: tests/harness/$arg.sh" >&2; exit 2; }
+            HARNESSES+=("$arg")
+            ;;
+    esac
+done
+if [ ${#HARNESSES[@]} -eq 0 ]; then
+    for f in "$TESTS"/harness/*.sh; do HARNESSES+=("$(basename "$f" .sh)"); done
+fi
+
+leftovers=0
+for h in "${HARNESSES[@]}"; do
+    (
+        . "$TESTS/harness/$h.sh"
+        h_available || { echo "$h: not installed"; exit 0; }
+        before=$(h_status)
+        if [ -z "$before" ]; then
+            echo "$h: nothing to remove"
+            exit 0
+        fi
+        echo "$h:"
+        printf '%s\n' "$before" | sed 's/^/  found      /'
+        [ "$DRY" = 1 ] && exit 0
+        h_uninstall
+        after=$(h_status)
+        if [ -n "$after" ]; then
+            printf '%s\n' "$after" | sed 's/^/  LEFT OVER  /'
+            exit 1
+        fi
+        echo "  removed"
+    ) || leftovers=1
+done
+exit "$leftovers"

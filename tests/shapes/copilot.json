@@ -1,0 +1,56 @@
+{
+  "postToolUse:bash": {
+    "cwd": [
+      "string"
+    ],
+    "sessionId": [
+      "string"
+    ],
+    "timestamp": [
+      "number"
+    ],
+    "toolArgs": [
+      "object"
+    ],
+    "toolName": [
+      "string"
+    ],
+    "toolResult": [
+      "object"
+    ]
+  },
+  "postToolUse:mcp": {
+    "cwd": [
+      "string"
+    ],
+    "sessionId": [
+      "string"
+    ],
+    "timestamp": [
+      "number"
+    ],
+    "toolArgs": [
+      "object"
+    ],
+    "toolName": [
+      "string"
+    ],
+    "toolResult": [
+      "object"
+    ]
+  },
+  "userPromptSubmitted": {
+    "cwd": [
+      "string"
+    ],
+    "prompt": [
+      "string"
+    ],
+    "sessionId": [
+      "string"
+    ],
+    "timestamp": [
+      "number"
+    ]
+  }
+}

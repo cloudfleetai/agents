@@ -1,4 +1,5 @@
 {
+  "version": 1,
   "hooks": {
     "PostToolUse": [
       {
@@ -64,6 +65,29 @@
             "timeout": 5
           }
         ]
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "\"${COPILOT_PLUGIN_ROOT}/scripts/feedback-hook\" copilot postToolUse",
+        "timeoutSec": 5,
+        "matcher": "^(bash|cloudfleet-.*)$"
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "type": "command",
+        "bash": "\"${COPILOT_PLUGIN_ROOT}/scripts/feedback-hook\" copilot postToolUseFailure",
+        "timeoutSec": 5,
+        "matcher": "^(bash|cloudfleet-.*)$"
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "\"${COPILOT_PLUGIN_ROOT}/scripts/feedback-hook\" copilot userPromptSubmitted",
+        "timeoutSec": 5
       }
     ]
   }

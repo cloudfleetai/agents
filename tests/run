@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Regression tests across agent harnesses. Local only: live runs cost model
+# tokens and need each harness installed and logged in, so CI does not run this.
+#
+# Usage: tests/run [--live] [--record] [harness ...]
+#   harness   one of tests/harness/*.sh; default: all of them
+#   --live    also run prompts on each harness's cheapest model
+#   --record  with --live, save the hook input shapes as the new snapshot
+#   KEEP=1    keep each harness's work directory (credentials are removed)
+#
+# Discovery installs the working copy into an isolated harness home and checks
+# skills, the MCP server and hooks. Live runs check that the feedback hook sees
+# the calls and prompts at the right moments, and compare the shape of every
+# hook input with tests/shapes/<harness>.json.
+
+set -uo pipefail
+
+REPO=$(cd "$(dirname "$0")/.." && pwd)
+TESTS="$REPO/tests"
+. "$TESTS/lib.sh"
+
+LIVE=0
+RECORD=0
+HARNESSES=()
+for arg in "$@"; do
+    case "$arg" in
+        --live) LIVE=1 ;;
+        --record) RECORD=1 ;;
+        -h | --help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*) echo "unknown option: $arg" >&2; exit 2 ;;
+        *)
+            [ -f "$TESTS/harness/$arg.sh" ] || { echo "no adapter: tests/harness/$arg.sh" >&2; exit 2; }
+            HARNESSES+=("$arg")
+            ;;
+    esac
+done
+[ "$RECORD" = 0 ] || [ "$LIVE" = 1 ] || { echo "--record needs --live" >&2; exit 2; }
+if [ ${#HARNESSES[@]} -eq 0 ]; then
+    for f in "$TESTS"/harness/*.sh; do HARNESSES+=("$(basename "$f" .sh)"); done
+fi
+
+# Live prompts approve the cloudfleet MCP tools, so they must not be able to
+# send real feedback. The adapters block feedback_send and `cloudfleet feedback`.
+NO_FEEDBACK="Do not send feedback and do not ask about it."
+
+live() {
+    h_live_setup || { fail "live setup (is $1 logged in?)"; return; }
+    export CLOUDFLEET_FEEDBACK_LOG="$HOOK_LOG"
+
+    echo "Live ($H_MODEL):"
+    CLOUDFLEET_FEEDBACK_ROLL=99 h_prompt "Call the cloudfleet MCP tool who_am_i once. $NO_FEEDBACK Then reply with just: done"
+    check "prompt reaches the $H_PROMPT_EVENT hook" "log_has '.event == \"$H_PROMPT_EVENT\"'"
+    check "MCP call reaches the hooks" "log_has '.input | tojson | contains(\"${H_MCP_PREFIX}who_am_i\")'"
+    check "successful call, roll above the rate: no prompt" "! log_has '.output != null'"
+
+    CLOUDFLEET_FEEDBACK_ROLL=99 h_prompt "Run this shell command once and do not retry or investigate it: cloudfleet clusters describe 00000000-0000-0000-0000-000000000000. $NO_FEEDBACK Then reply with just: done"
+    check "failed cloudfleet command prompts for feedback ($H_FAIL_EVENT)" \
+        "log_has '.event == \"$H_FAIL_EVENT\" and (.output | tojson | contains(\"The Cloudfleet tool failed\"))'"
+
+    CLOUDFLEET_FEEDBACK_ROLL=0 h_resume "Reply with just: ok"
+    check "next prompt assesses the Cloudfleet turn" \
+        "log_has '.event == \"$H_PROMPT_EVENT\" and (.output | tojson | contains(\"Assess the preceding Cloudfleet work\"))'"
+
+    local shapes snapshot="$TESTS/shapes/$1.json"
+    shapes=$(log_shapes)
+    if [ "$RECORD" = 1 ]; then
+        mkdir -p "$TESTS/shapes"
+        printf '%s\n' "$shapes" >"$snapshot"
+        pass "recorded hook input shapes to tests/shapes/$1.json"
+    else
+        compare_shapes "$snapshot" "$shapes"
+    fi
+}
+
+run_harness() (
+    . "$TESTS/harness/$1.sh"
+    echo
+    echo "== $1"
+    if ! h_available; then
+        skip "$1 is not installed"
+        echo "$PASSED $FAILED $SKIPPED" >>"$RESULTS"
+        return
+    fi
+    echo "version $(h_version)"
+
+    WORK=$(mktemp -d)
+    PROJECT="$WORK/project"
+    HOOK_LOG="$WORK/hook.log"
+    mkdir -p "$PROJECT"
+    finish() {
+        echo "$PASSED $FAILED $SKIPPED" >>"$RESULTS"
+        rm -f "$WORK/codex-home/auth.json"
+        if [ "${KEEP:-0}" = 1 ]; then echo "work directory kept: $WORK"; else rm -rf "$WORK"; fi
+    }
+    trap finish EXIT
+
+    echo "Discovery:"
+    if ! h_setup; then
+        fail "install the working copy"
+        return
+    fi
+    pass "install the working copy"
+    same_set "skills" "$(h_expected_skills)" "$(h_skills)"
+    check "MCP server cloudfleet" 'h_mcp_servers | grep -qx cloudfleet'
+    local hooks
+    if hooks=$(h_hooks); then
+        same_set "hooks from $H_HOOK_FILE" "$(hook_events "$H_HOOK_FILE" | sed "s|\$| $H_HOOK_FILE|")" "$hooks"
+    else
+        skip "hooks are not listed by $1 (--live shows they fire)"
+    fi
+
+    [ "$LIVE" = 1 ] && live "$1"
+    return 0
+)
+
+RESULTS=$(mktemp)
+trap 'rm -f "$RESULTS"' EXIT
+for h in "${HARNESSES[@]}"; do run_harness "$h"; done
+
+read -r p f s < <(awk '{p += $1; f += $2; s += $3} END {print p + 0, f + 0, s + 0}' "$RESULTS")
+echo
+echo "$p passed, $f failed, $s skipped"
+[ "$f" -eq 0 ]
