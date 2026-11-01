@@ -30,8 +30,13 @@ If not provided in `$ARGUMENTS`, run `cloudfleet clusters list` (with `--profile
 If kubectl is enabled, get an isolated kubeconfig:
 
 ```bash
-KUBECONFIG=$(cfke-kubeconfig get $CLUSTER_ID)
+KUBECONFIG="${TMPDIR:-/tmp}"; KUBECONFIG="${KUBECONFIG%/}/cloudfleet-$(id -u)/$CLUSTER_ID.kubeconfig"
+mkdir -p "${KUBECONFIG%/*}" && chmod 700 "${KUBECONFIG%/*}"
+[ -f "$KUBECONFIG" ] || (umask 077 && cloudfleet clusters kubeconfig "$CLUSTER_ID" --kubeconfig "$KUBECONFIG" >&2)
+echo "$KUBECONFIG"
 ```
+
+The directory is per-user and private, so other local users cannot read or replace the file. Add `--profile` to the `cloudfleet` command if the user named one. Shell variables do not survive between commands, so pass the printed path to later commands.
 
 **Always use `kubectl --kubeconfig $KUBECONFIG`** — never bare `kubectl`, as the user's active context may point to a different cluster.
 

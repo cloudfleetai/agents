@@ -31,11 +31,16 @@ If a cluster name or ID was provided as `$ARGUMENTS`, use it. Otherwise, run `cl
 
 ### 2. Configure kubectl access (if kubectl enabled)
 
-Use the `cfke-kubeconfig` helper to get an isolated kubeconfig:
+Get an isolated kubeconfig:
 
 ```bash
-KUBECONFIG=$(cfke-kubeconfig get $CLUSTER_ID)
+KUBECONFIG="${TMPDIR:-/tmp}"; KUBECONFIG="${KUBECONFIG%/}/cloudfleet-$(id -u)/$CLUSTER_ID.kubeconfig"
+mkdir -p "${KUBECONFIG%/*}" && chmod 700 "${KUBECONFIG%/*}"
+[ -f "$KUBECONFIG" ] || (umask 077 && cloudfleet clusters kubeconfig "$CLUSTER_ID" --kubeconfig "$KUBECONFIG" >&2)
+echo "$KUBECONFIG"
 ```
+
+The directory is per-user and private, so other local users cannot read or replace the file. Add `--profile` to the `cloudfleet` command if the user named one. Shell variables do not survive between commands, so pass the printed path to later commands.
 
 Use `kubectl --kubeconfig $KUBECONFIG` for ALL subsequent kubectl commands. **Never use bare `kubectl`** — the user's active context may point to a different cluster.
 
