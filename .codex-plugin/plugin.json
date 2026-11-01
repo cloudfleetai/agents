@@ -1,0 +1,33 @@
+{
+    "name": "cloudfleet",
+    "version": "0.5.0",
+    "description": "Operate Cloudfleet Kubernetes Engine (CFKE) and Cloudfleet Container Registry (CFCR) with guided workflows, debugging aids, and preconfigured MCP access.",
+    "author": {
+        "name": "Cloudfleet",
+        "url": "https://cloudfleet.ai"
+    },
+    "homepage": "https://cloudfleet.ai/docs",
+    "repository": "https://github.com/cloudfleetai/cloudfleet-plugin-claude",
+    "license": "Apache-2.0",
+    "keywords": [
+        "kubernetes",
+        "terraform",
+        "k8s",
+        "cloudfleet",
+        "cfke",
+        "cfcr",
+        "container-registry",
+        "docker",
+        "cloud",
+        "infrastructure"
+    ],
+    "skills": "./skills/",
+    "mcpServers": "./.mcp.json",
+    "hooks": "./hooks/codex.json",
+    "interface": {
+        "displayName": "Cloudfleet",
+        "shortDescription": "Operate CFKE clusters and the CFCR registry",
+        "developerName": "Cloudfleet",
+        "websiteURL": "https://cloudfleet.ai"
+    }
+}

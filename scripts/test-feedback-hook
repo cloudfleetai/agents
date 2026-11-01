@@ -39,11 +39,29 @@ T_OLD=$(transcript old "$(human 'old question')" "$(said 'Cloudfleet answer')" "
 T_HOOK=$(transcript hook "$(human 'run it')" '{"type":"attachment","attachment":{"type":"hook_success","stdout":"Blocked: not a CFKE cluster"}}')
 T_NOHUMAN=$(transcript nohuman "$(said 'cloudfleet clusters list returned 2 clusters')")
 
-# run <roll> <event json, without session_id> -> hook stdout
+# Codex transcript fixtures: conversation items arrive as item_completed events
+# between task_started and task_complete.
+cx_event() { jq -cn --argjson p "$1" '{type: "event_msg", payload: $p}'; }
+cx_started() { cx_event '{"type":"task_started"}'; }
+cx_complete() { cx_event '{"type":"task_complete"}'; }
+cx_item() { cx_event "$(jq -cn --argjson i "$1" '{type: "item_completed", item: $i}')"; }
+cx_user() { cx_item "$(jq -cn --arg t "$1" '{type: "UserMessage", content: [{type: "text", text: $t}]}')"; }
+cx_said() { cx_item "$(jq -cn --arg t "$1" '{type: "AgentMessage", content: [{type: "Text", text: $t}]}')"; }
+cx_cmd() { cx_item "$(jq -cn --arg id "$1" --arg c "$2" --argjson e "$3" '{type: "CommandExecution", id: $id, command: ["/bin/zsh", "-lc", $c], cwd: "file:///home/me/cloudfleet-infra", aggregated_output: "", exit_code: $e}')"; }
+cx_preamble() { jq -cn '{type: "response_item", payload: {type: "message", role: "developer", content: [{type: "input_text", text: "Skills: cloudfleet:setup, cloudfleet:debug-cluster"}]}}'; }
+
+CX_CLI=$(transcript cx-cli "$(cx_preamble)" "$(cx_started)" "$(cx_user 'what is running?')" "$(cx_cmd exec-1 'cloudfleet clusters list' 0)" "$(cx_said 'Two clusters.')" "$(cx_complete)" "$(cx_started)")
+CX_TEXT=$(transcript cx-text "$(cx_started)" "$(cx_user 'hi')" "$(cx_said 'Your CFCR registry is ready.')" "$(cx_complete)")
+CX_OLD=$(transcript cx-old "$(cx_started)" "$(cx_said 'Cloudfleet answer')" "$(cx_complete)" "$(cx_started)" "$(cx_user 'unrelated')" "$(cx_said 'Sure, here is a poem.')" "$(cx_complete)")
+CX_NOISE=$(transcript cx-noise "$(cx_preamble)" "$(cx_started)" "$(cx_user 'tidy the repo')" "$(cx_cmd exec-2 'git status' 0)" "$(cx_said 'Clean.')" "$(cx_complete)")
+CX_FIRST=$(transcript cx-first "$(cx_preamble)" "$(cx_started)")
+CX_EXIT=$(transcript cx-exit "$(cx_started)" "$(cx_cmd exec-ok 'cloudfleet clusters list' 0)" "$(cx_cmd exec-bad 'cloudfleet clusters describe x' 75)")
+
+# run <roll> <event json, without session_id> [harness] -> hook stdout
 run() {
     printf '%s' "$2" |
         jq -c --arg s "test-$session" '. + {session_id: $s}' |
-        PATH="$T/bin:$PATH" TMPDIR="$T/markers" CLOUDFLEET_FEEDBACK_ROLL="$1" "$HOOK" 2>/dev/null
+        PATH="$T/bin:$PATH" TMPDIR="$T/markers" CLOUDFLEET_FEEDBACK_ROLL="$1" "$HOOK" ${3:+"$3"} 2>/dev/null
 }
 
 kind() {
@@ -54,10 +72,10 @@ kind() {
     fi
 }
 
-# expect <none|context|steer> <description> <roll> <event json>
+# expect <none|context|steer> <description> <roll> <event json> [harness]
 expect() {
     local want="$1" desc="$2" got
-    LAST_OUT=$(run "$3" "$4")
+    LAST_OUT=$(run "$3" "$4" "${5:-}")
     got=$(kind "$LAST_OUT")
     if [ "$got" = "$want" ]; then
         printf '  ok       %s\n' "$desc"
@@ -151,6 +169,43 @@ expect context "last_assistant_message in the event" 0 \
 new_session
 expect none "mention only in an earlier turn" 0 "$(prompt "$T_OLD")"
 expect none "missing transcript" 0 "$(prompt "$T/missing.jsonl")"
+
+echo
+echo "Codex tool calls (failures always, successes sampled once per session):"
+CX=mcp__cloudfleet__
+cx_bash() { jq -cn --arg c "$1" --arg id "$2" --arg t "$CX_EXIT" '{hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: {command: $c}, tool_response: "out", tool_use_id: $id, transcript_path: $t}'; }
+cx_mcp() { jq -cn --arg n "$CX$1" --argjson r "$2" '{hook_event_name: "PostToolUse", tool_name: $n, tool_input: {}, tool_response: $r}'; }
+cx_prompt() { jq -cn --arg t "$1" '{hook_event_name: "UserPromptSubmit", prompt: "next", transcript_path: $t}'; }
+new_session
+expect context "cloudfleet command exited non-zero" 99 "$(cx_bash 'cloudfleet clusters describe x' exec-bad)" codex
+check "names the Codex client" 'printf "%s" "$LAST_OUT" | grep -qF "cloudfleet-plugin-codex/$(jq -r .version "$(dirname "$HOOK")/../.codex-plugin/plugin.json")"'
+check "prompts as context, never a block" '! printf "%s" "$LAST_OUT" | jq -e .decision >/dev/null'
+expect context "again in the same session" 99 "$(cx_bash 'cloudfleet clusters describe x' exec-bad)" codex
+expect context "MCP tool returned an error" 99 "$(cx_mcp clusters_get '{"content":[{"type":"text","text":"not found"}],"isError":true}')" codex
+expect none "cloudfleet command succeeded, roll above the rate" 1 "$(cx_bash 'cloudfleet clusters list' exec-ok)" codex
+expect none "exit code not in the transcript" 1 "$(cx_bash 'cloudfleet clusters list' exec-missing)" codex
+expect none "Claude's MCP prefix" 99 "$(cx_mcp clusters_get '{"isError":true}' | jq -c --arg n "${MCP}clusters_get" '.tool_name = $n')" codex
+expect none "cloudfleet feedback itself" 99 "$(cx_bash 'cloudfleet feedback --message x' exec-bad)" codex
+expect none "kubectl" 99 "$(cx_bash 'kubectl get pods' exec-bad)" codex
+expect context "MCP tool succeeded, roll under the rate" 0 "$(cx_mcp who_am_i '{"content":[{"type":"text","text":"{}"}]}')" codex
+check "context names the event" '[ "$(printf "%s" "$LAST_OUT" | jq -r .hookSpecificOutput.hookEventName)" = PostToolUse ]'
+expect none "second ask in the same session" 0 "$(cx_bash 'cloudfleet clusters list' exec-ok)" codex
+expect context "failures still prompt after an ask" 99 "$(cx_bash 'cloudfleet clusters describe x' exec-bad)" codex
+
+echo
+echo "Codex prompt after a turn mentioning Cloudfleet (sampled, once per session):"
+new_session
+expect none "roll above the rate" 10 "$(cx_prompt "$CX_CLI")" codex
+expect context "cloudfleet command in the last turn" 0 "$(cx_prompt "$CX_CLI")" codex
+expect none "second ask in the same session" 0 "$(cx_prompt "$CX_CLI")" codex
+new_session
+expect context "assistant text in the last turn" 0 "$(cx_prompt "$CX_TEXT")" codex
+new_session
+expect none "mention only in an earlier turn" 0 "$(cx_prompt "$CX_OLD")" codex
+expect none "only the skill list and cwd mention cloudfleet" 0 "$(cx_prompt "$CX_NOISE")" codex
+expect none "first prompt of the session" 0 "$(cx_prompt "$CX_FIRST")" codex
+expect none "missing transcript" 0 "$(cx_prompt "$T/missing.jsonl")" codex
+expect none "unknown harness" 0 "$(cx_prompt "$CX_CLI")" cursor
 
 echo
 echo "CLI version (feedback_send works through any CLI, \`cloudfleet feedback\` needs 1.10.0+):"

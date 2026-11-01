@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|mcp__cloudfleet__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${PLUGIN_ROOT}/scripts/feedback-hook\" codex",
+            "timeout": 5,
+            "statusMessage": "Cloudfleet feedback check"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${PLUGIN_ROOT}/scripts/feedback-hook\" codex",
+            "timeout": 5,
+            "statusMessage": "Cloudfleet feedback check"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,14 +1,27 @@
 #!/usr/bin/env bash
 # Feedback prompts, modelled on the Stripe plugin's lifecycle hooks (0.11.17):
-# at moments when there is Cloudfleet work to judge, tell Claude to assess it and
+# at moments when there is Cloudfleet work to judge, tell the agent to assess it and
 # send Cloudfleet feedback after the user approves the draft.
 #
+# The first argument names the harness: none for Claude Code, `codex` for Codex.
+#
+# Claude Code
 # Event                 Condition                                       Rate
 # PostToolUseFailure    cloudfleet: skill, Cloudfleet MCP tool, or a     always
 #                       `cloudfleet` CLI command failed
 # PostToolBatch         the batch used Cloudfleet and nothing failed     PER_TOOL_RATE
 # PostToolUse (Agent)   a completed subagent's work mentions Cloudfleet  PER_TOOL_RATE
 # UserPromptSubmit      the previous turn mentions Cloudfleet            PER_TURN_RATE
+#
+# Codex has no failure or batch events, and no Agent or Skill tool.
+# PostToolUse           a `cloudfleet` command exited non-zero, or a     always
+#                       Cloudfleet MCP tool returned an error
+# PostToolUse           the same calls when they succeeded               PER_TOOL_RATE
+# UserPromptSubmit      the previous turn mentions Cloudfleet            PER_TURN_RATE
+# Codex fires no PostToolUse for an MCP call that fails outright, and passes
+# Bash output without the exit code, which is read from the transcript instead.
+# Its `decision: block` replaces the tool result, so every Codex prompt is
+# additionalContext.
 #
 # Sampled prompts fire at most once per session. Failures steer every time,
 # except failures of the feedback command itself.
@@ -25,8 +38,14 @@ PER_TURN_RATE=10 # percent
 PER_TOOL_RATE=1  # percent
 MIN_CLI_VERSION=1.10.0
 TRANSCRIPT_TAIL_BYTES=1048576
-MCP_PREFIX='mcp__plugin_cloudfleet_cloudfleet__'
 MENTION_RE='cloudfleet|cfke|cfcr'
+
+HARNESS=${1:-claude}
+case "$HARNESS" in
+    claude) MCP_PREFIX='mcp__plugin_cloudfleet_cloudfleet__' MANIFEST=.claude-plugin/plugin.json ;;
+    codex) MCP_PREFIX='mcp__cloudfleet__' MANIFEST=.codex-plugin/plugin.json ;;
+    *) exit 0 ;;
+esac
 
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -124,14 +143,75 @@ batch_failed() {
         .tool_response | failed' >/dev/null 2>&1
 }
 
+# Codex writes each command's exit code to the transcript before PostToolUse
+# fires, keyed by the hook's tool_use_id.
+codex_exit_code() {
+    local t id
+    t=$(field .transcript_path)
+    id=$(field .tool_use_id)
+    [ -f "$t" ] && [ -n "$id" ] || return 0
+    tail -c "$TRANSCRIPT_TAIL_BYTES" "$t" | grep -F "\"id\":\"$id\"" |
+        jq -r 'select(.payload.item.type? == "CommandExecution") | .payload.item.exit_code // empty' 2>/dev/null |
+        tail -n 1
+}
+
+codex_call_failed() {
+    local code
+    case "$(field .tool_name)" in
+        Bash)
+            code=$(codex_exit_code)
+            [ -n "$code" ] && [ "$code" != 0 ]
+            ;;
+        *) batch_failed "$INPUT" ;;
+    esac
+}
+
+# The previous turn runs from the task_started before the last task_complete to
+# that task_complete. Only conversation items are scanned: the session preamble
+# lists every installed skill, and cwd may itself contain "cloudfleet".
+codex_last_turn_mentions_cloudfleet() {
+    local t
+    t=$(field .transcript_path)
+    [ -f "$t" ] || return 1
+    tail -c "$TRANSCRIPT_TAIL_BYTES" "$t" | tail -n +2 |
+        jq -R 'fromjson?' |
+        jq -se --arg re "$MENTION_RE" '
+            [.[] | select(.type? == "event_msg") | .payload] as $p
+            | ([range(0; $p | length) | select($p[.].type? == "task_complete")] | last) as $end
+            | $end != null
+              and (([range(0; $end) | select($p[.].type? == "task_started")] | last // 0) as $start
+                   | $p[$start:$end]
+                   | map(select(.type? == "item_completed") | .item
+                         | select(.type? | IN("UserMessage", "AgentMessage", "CommandExecution", "McpToolCall"))
+                         | del(.cwd, .id, .process_id))
+                   | any(.[]; tojson | test($re; "i")))
+        ' >/dev/null 2>&1
+}
+
 KIND=""
-case "$EVENT" in
-    PostToolUseFailure)
+case "$HARNESS:$EVENT" in
+    codex:PostToolUse)
+        is_cloudfleet_call "$INPUT" || exit 0
+        if codex_call_failed; then
+            KIND=failure
+        else
+            [ -e "$ASKED" ] && exit 0
+            sampled "$PER_TOOL_RATE" || exit 0
+            KIND=tool
+        fi
+        ;;
+    codex:UserPromptSubmit)
+        [ -e "$ASKED" ] && exit 0
+        sampled "$PER_TURN_RATE" || exit 0
+        codex_last_turn_mentions_cloudfleet || exit 0
+        KIND=turn
+        ;;
+    claude:PostToolUseFailure)
         [ "$(field .is_interrupt)" = true ] && exit 0
         is_cloudfleet_call "$INPUT" || exit 0
         KIND=failure
         ;;
-    PostToolBatch)
+    claude:PostToolBatch)
         [ -e "$ASKED" ] && exit 0
         used=false
         while IFS= read -r call; do
@@ -143,7 +223,7 @@ case "$EVENT" in
         sampled "$PER_TOOL_RATE" || exit 0
         KIND=batch
         ;;
-    PostToolUse)
+    claude:PostToolUse)
         [ "$(field .tool_name)" = Agent ] || exit 0
         [ "$(field .tool_response.status)" = completed ] || exit 0
         [ -e "$ASKED" ] && exit 0
@@ -152,7 +232,7 @@ case "$EVENT" in
         sampled "$PER_TOOL_RATE" || exit 0
         KIND=agent
         ;;
-    UserPromptSubmit)
+    claude:UserPromptSubmit)
         [ -e "$ASKED" ] && exit 0
         sampled "$PER_TURN_RATE" || exit 0
         last_turn_mentions_cloudfleet || exit 0
@@ -163,8 +243,8 @@ esac
 
 command -v cloudfleet >/dev/null 2>&1 || exit 0
 
-PLUGIN_VERSION=$(jq -r '.version // empty' "${0%/*}/../.claude-plugin/plugin.json" 2>/dev/null)
-CLIENT="cloudfleet-plugin-claude/${PLUGIN_VERSION:-unknown}"
+PLUGIN_VERSION=$(jq -r '.version // empty' "${0%/*}/../$MANIFEST" 2>/dev/null)
+CLIENT="cloudfleet-plugin-$HARNESS/${PLUGIN_VERSION:-unknown}"
 
 CRITERIA="If it was useful, confusing, wrong, or incomplete, send Cloudfleet feedback."
 if cli_has_feedback; then
@@ -178,14 +258,15 @@ APPROVAL="Before submitting, show the prospective feedback to the user and ask f
 case "$KIND" in
     failure) MSG="The Cloudfleet tool failed. Send Cloudfleet feedback explaining what you were trying to do and what failed. $EXAMPLE $OPTIONS Then continue resolving the failure and the user's task. $APPROVAL" ;;
     batch) MSG="Assess the Cloudfleet skills, MCP tools, or CLI commands used in this batch. If any were useful, confusing, wrong, or incomplete, send Cloudfleet feedback. $EXAMPLE $OPTIONS Then continue the user's task. $APPROVAL" ;;
+    tool) MSG="Assess the Cloudfleet MCP tool or CLI command you just used. $CRITERIA $EXAMPLE $OPTIONS Then continue the user's task. $APPROVAL" ;;
     agent) MSG="Assess the completed subagent's Cloudfleet-related work. $CRITERIA $EXAMPLE $OPTIONS Then continue the user's task. $APPROVAL" ;;
     turn) MSG="Assess the preceding Cloudfleet work before handling the new message. $CRITERIA $EXAMPLE $OPTIONS Then continue by responding to the user's new message. $APPROVAL" ;;
 esac
 
-if [ "$KIND" = failure ]; then
+if [ "$KIND" = failure ] && [ "$HARNESS" = claude ]; then
     jq -n --arg r "$MSG" '{decision: "block", reason: $r}'
 else
-    : >"$ASKED" 2>/dev/null
+    [ "$KIND" = failure ] || : >"$ASKED" 2>/dev/null
     jq -n --arg e "$EVENT" --arg c "$MSG" '{hookSpecificOutput: {hookEventName: $e, additionalContext: $c}}'
 fi
 exit 0

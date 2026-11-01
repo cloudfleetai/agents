@@ -5,7 +5,7 @@
 ## Features
 
 - **Preconfigured MCP server** — query clusters, list resources, and get cluster info without local setup
-- **Feedback prompts**: modelled on the Stripe plugin. When a Cloudfleet skill, MCP tool or CLI command fails, and occasionally after Cloudfleet work, hooks ask Claude to assess it and offer to send feedback through the `feedback_send` MCP tool, or `cloudfleet feedback` on CLI 1.10.0+. Claude shows the draft and sends only after you approve.
+- **Feedback prompts**: modelled on the Stripe plugin. When a Cloudfleet skill, MCP tool or CLI command fails, and occasionally after Cloudfleet work, hooks ask the agent to assess it and offer to send feedback through the `feedback_send` MCP tool, or `cloudfleet feedback` on CLI 1.10.0+. The agent shows the draft and sends only after you approve. Works in Claude Code and Codex.
 - **Reaching Cloudfleet**: the `contact` skill routes between support tickets (anything that needs an answer or an investigation), the roadmap (see, vote on, or suggest concrete features), and feedback (quick one-way notes).
 - **Background knowledge** — CFKE architecture, CFCR usage, best practices (resource requests, load balancers, node placement) auto-triggered when relevant
 - **Guided workflows** — cluster setup via the CLI or Terraform, fleet configuration, self-managed nodes, debugging
@@ -18,7 +18,7 @@
 
 ## Installation
 
-### From GitHub
+### Claude Code
 
 ```
 /plugin marketplace add cloudfleetai/cloudfleet-plugin-claude
@@ -26,13 +26,35 @@
 /reload-plugins
 ```
 
+### Codex
+
+```bash
+codex plugin marketplace add cloudfleetai/cloudfleet-plugin-claude
+codex plugin add cloudfleet@cloudfleet
+```
+
+Codex runs the feedback hooks only after you trust them: it asks on the next launch, or review them under `/hooks`. Codex asks again after every plugin update, because trust covers the installed plugin's contents.
+
 ### Local development
+
+Claude Code loads the working copy directly:
 
 ```bash
 claude --plugin-dir /path/to/cloudfleet-plugin-claude
 ```
 
 Use `/reload-plugins` to pick up changes without restarting.
+
+Codex installs a copy, so reinstall after each change:
+
+```bash
+codex plugin marketplace add /path/to/cloudfleet-plugin-claude
+codex plugin remove cloudfleet@cloudfleet && codex plugin add cloudfleet@cloudfleet
+```
+
+Each reinstall invalidates hook trust. For non-interactive test runs of hooks you have reviewed, pass `--dangerously-bypass-hook-trust` to `codex exec`.
+
+Codex reads `.codex-plugin/plugin.json`, which points it at `hooks/codex.json`; Claude Code reads `.claude-plugin/` and `hooks/hooks.json`. The two harnesses have different hook events, so each file lists only its own. A root `plugin.json` (Agent Plugins format) would stop Codex 0.166 from loading any plugin hooks, so there is none.
 
 Validate and lint before submitting changes:
 
