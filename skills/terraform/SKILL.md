@@ -84,7 +84,7 @@ Changing cluster `name`, `region` or `networking`, or fleet `name` or `cluster_i
 
 ## Before apply
 
-- Check `~/.terraformrc` (or `$TF_CLI_CONFIG_FILE`) for a `dev_overrides` entry for `terraform.cloudfleet.ai/cloudfleet/cloudfleet`. It silently outranks the pinned version and the lock file, so a local development build runs against real infrastructure. The plugin's PreToolUse hook flags this and asks before `apply`/`destroy`.
+- Check `~/.terraformrc` (or `$TF_CLI_CONFIG_FILE`) for a `dev_overrides` entry for `terraform.cloudfleet.ai/cloudfleet/cloudfleet`. It silently outranks the pinned version and the lock file, so a local development build runs against real infrastructure.
 - Confirm which organization the credentials resolve to (see Authentication).
 
 ## Connecting Kubernetes and Helm providers

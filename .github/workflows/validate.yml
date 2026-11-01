@@ -23,12 +23,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: kubectl context hook
-        run: scripts/test-validate-kubectl-context
-
-      - name: Terraform hook
-        run: scripts/test-validate-terraform
-
       - name: Feedback hook
         run: scripts/test-feedback-hook
 

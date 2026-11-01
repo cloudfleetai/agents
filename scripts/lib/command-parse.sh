@@ -1,4 +1,4 @@
-# Shell-command parsing shared by the PreToolUse hooks. Source it, do not run it.
+# Shell-command parsing for the feedback hook. Source it, do not run it.
 #
 # The goal is to tell an actual invocation of a tool apart from text that merely
 # mentions it (prose, strings, document bodies), not to parse shell faithfully.
