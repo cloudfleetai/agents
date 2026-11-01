@@ -7,7 +7,7 @@
     "plugins": [
         {
             "name": "cloudfleet",
-            "version": "0.5.0",
+            "version": "1.0.0",
             "source": "./",
             "description": "Operate Cloudfleet Kubernetes Engine (CFKE) and Cloudfleet Container Registry (CFCR) with guided workflows, debugging, and MCP access."
         }

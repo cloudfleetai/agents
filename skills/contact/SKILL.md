@@ -61,8 +61,10 @@ Do not suggest something that is already listed under different wording; vote on
 cloudfleet feedback --sentiment <positive|neutral|negative> \
   --message "<what was useful, confusing, wrong, or missing>" \
   --context "<what the user was trying to do>" \
-  --source plugin --client cloudfleet-plugin-claude
+  --source plugin --client cloudfleet-plugin-<agent>
 ```
+
+Set `<agent>` to the agent you run in: `claude`, `codex`, `copilot`, `antigravity`, `cursor`, or `kiro`.
 
 Or the `feedback_send` MCP tool with `sentiment`, `message`, `context`, and `client`. Keep one point per message (up to 2000 characters each for message and context). Use the sentiment honestly; positive feedback is useful too. Tell the user the team reads it but does not reply.
 

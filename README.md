@@ -1,11 +1,22 @@
-# Cloudfleet Plugin for Claude Code
+# Cloudfleet plugin for AI coding agents
 
-[Claude Code](https://claude.ai/code) plugin by [Cloudfleet](https://cloudfleet.ai) — operate Cloudfleet Kubernetes Engine (CFKE) and Cloudfleet Container Registry (CFCR) with guided workflows, debugging aids, and preconfigured MCP access.
+Plugin by [Cloudfleet](https://cloudfleet.ai) for AI coding agents: operate Cloudfleet Kubernetes Engine (CFKE) and Cloudfleet Container Registry (CFCR) with guided workflows, debugging aids, and preconfigured MCP access. One repository serves every agent below.
+
+## Supported agents
+
+| Agent | Skills | MCP server | Feedback prompts |
+| --- | --- | --- | --- |
+| Claude Code | ✓ | ✓ | on failures, sampled after Cloudfleet work, and on the next prompt |
+| Codex | ✓ | ✓ | same as Claude Code, once you trust the hooks |
+| GitHub Copilot CLI | ✓ | ✓ | same as Claude Code |
+| Antigravity | ✓ | ✓ | same as Claude Code |
+| Cursor | ✓ | ✓ | sampled after successful Cloudfleet calls only |
+| Kiro CLI | ✓ (V3 engine) | ✓ | none: Kiro powers carry no hooks |
 
 ## Features
 
 - **Preconfigured MCP server** — query clusters, list resources, and get cluster info without local setup
-- **Feedback prompts**: modelled on the Stripe plugin. When a Cloudfleet skill, MCP tool or CLI command fails, and occasionally after Cloudfleet work, hooks ask the agent to assess it and offer to send feedback through the `feedback_send` MCP tool, or `cloudfleet feedback` on CLI 1.10.0+. The agent shows the draft and sends only after you approve. Works in Claude Code, Codex, Copilot CLI and Antigravity; Cursor gets only the sampled prompt after successful calls, and Kiro has no plugin hooks.
+- **Feedback prompts**: modelled on the Stripe plugin. When a Cloudfleet skill, MCP tool or CLI command fails, and occasionally after Cloudfleet work, hooks ask the agent to assess it and offer to send feedback through the `feedback_send` MCP tool, or `cloudfleet feedback` on CLI 1.10.0+. The agent shows the draft and sends only after you approve. Coverage differs by agent; see the table above.
 - **Reaching Cloudfleet**: the `contact` skill routes between support tickets (anything that needs an answer or an investigation), the roadmap (see, vote on, or suggest concrete features), and feedback (quick one-way notes).
 - **Background knowledge** — CFKE architecture, CFCR usage, best practices (resource requests, load balancers, node placement) auto-triggered when relevant
 - **Guided workflows** — cluster setup via the CLI or Terraform, fleet configuration, self-managed nodes, debugging
@@ -15,7 +26,7 @@
 ### Claude Code
 
 ```
-/plugin marketplace add cloudfleetai/cloudfleet-plugin-claude
+/plugin marketplace add cloudfleetai/agents
 /plugin install cloudfleet@cloudfleet
 /reload-plugins
 ```
@@ -23,7 +34,7 @@
 ### Codex
 
 ```bash
-codex plugin marketplace add cloudfleetai/cloudfleet-plugin-claude
+codex plugin marketplace add cloudfleetai/agents
 codex plugin add cloudfleet@cloudfleet
 ```
 
@@ -32,14 +43,14 @@ Codex runs the feedback hooks only after you trust them: it asks on the next lau
 ### Copilot CLI
 
 ```bash
-copilot plugin marketplace add cloudfleetai/cloudfleet-plugin-claude
+copilot plugin marketplace add cloudfleetai/agents
 copilot plugin install cloudfleet@cloudfleet
 ```
 
 ### Antigravity
 
 ```bash
-agy plugin install https://github.com/cloudfleetai/cloudfleet-plugin-claude
+agy plugin install https://github.com/cloudfleetai/agents
 ```
 
 Antigravity imports the plugin into `~/.gemini/config/plugins/cloudfleet`; reinstall to update.
@@ -47,7 +58,7 @@ Antigravity imports the plugin into `~/.gemini/config/plugins/cloudfleet`; reins
 ### Cursor
 
 ```bash
-cursor-agent plugin marketplace add https://github.com/cloudfleetai/cloudfleet-plugin-claude
+cursor-agent plugin marketplace add https://github.com/cloudfleetai/agents
 ```
 
 Then install **cloudfleet** with `/plugins` in `cursor-agent`, or from Customize in the Cursor app. Cursor has no command that installs a plugin. A plugin's hooks get only `postToolUse`, for successful calls, so Cursor gets the occasional feedback prompt after Cloudfleet work, but none on failures or on the next turn.
@@ -57,7 +68,7 @@ Then install **cloudfleet** with `/plugins` in `cursor-agent`, or from Customize
 Kiro loads the plugin as a power, through `.kiro-power/` (a root `plugin.json` would break other harnesses). Only the V3 engine (`kiro-cli --v3`) loads it, and powers carry no hooks, so Kiro gets the skills and the MCP server but no feedback prompts. From a clone:
 
 ```bash
-kiro-cli powers install /path/to/cloudfleet-plugin-claude/.kiro-power
+kiro-cli powers install /path/to/agents/.kiro-power
 ```
 
 `.kiro-power/skills` is a symlink, and Kiro keeps it, so the clone must stay in place.
@@ -67,7 +78,7 @@ kiro-cli powers install /path/to/cloudfleet-plugin-claude/.kiro-power
 Claude Code loads the working copy directly:
 
 ```bash
-claude --plugin-dir /path/to/cloudfleet-plugin-claude
+claude --plugin-dir /path/to/agents
 ```
 
 Use `/reload-plugins` to pick up changes without restarting.
@@ -75,7 +86,7 @@ Use `/reload-plugins` to pick up changes without restarting.
 Codex installs a copy, so reinstall after each change:
 
 ```bash
-codex plugin marketplace add /path/to/cloudfleet-plugin-claude
+codex plugin marketplace add /path/to/agents
 codex plugin remove cloudfleet@cloudfleet && codex plugin add cloudfleet@cloudfleet
 ```
 
@@ -84,11 +95,11 @@ Each reinstall invalidates hook trust. For non-interactive test runs of hooks yo
 Copilot CLI loads a plugin from a local marketplace live from the working copy, so changes take effect in the next session:
 
 ```bash
-copilot plugin marketplace add /path/to/cloudfleet-plugin-claude
+copilot plugin marketplace add /path/to/agents
 copilot plugin install cloudfleet@cloudfleet
 ```
 
-Antigravity copies the plugin on install (`agy plugin install /path/to/cloudfleet-plugin-claude`), so reinstall after each change.
+Antigravity copies the plugin on install (`agy plugin install /path/to/agents`), so reinstall after each change.
 
 `tests/uninstall` removes the plugin and marketplace from every installed harness (and Codex's stored hook trust) before a manual test; `--dry-run` shows what is there.
 

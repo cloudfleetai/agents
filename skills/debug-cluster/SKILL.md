@@ -27,7 +27,7 @@ Check for kubectl with `command -v kubectl`. Use kubectl when it is installed, a
 
 ### 1. Identify the cluster
 
-If a cluster name or ID was provided as `$ARGUMENTS`, use it. Otherwise, run `cloudfleet clusters list` (with `--profile` if specified) to show available clusters and ask the user which one to debug. Save the cluster ID as CLUSTER_ID.
+If the user named a cluster (by name or ID), use it. Otherwise, run `cloudfleet clusters list` (with `--profile` if specified) to show available clusters and ask the user which one to debug. Save the cluster ID as CLUSTER_ID.
 
 ### 2. Configure kubectl access (if kubectl is installed)
 

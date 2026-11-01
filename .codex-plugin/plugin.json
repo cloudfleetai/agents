@@ -1,13 +1,13 @@
 {
     "name": "cloudfleet",
-    "version": "0.5.0",
+    "version": "1.0.0",
     "description": "Operate Cloudfleet Kubernetes Engine (CFKE) and Cloudfleet Container Registry (CFCR) with guided workflows, debugging aids, and preconfigured MCP access.",
     "author": {
         "name": "Cloudfleet",
         "url": "https://cloudfleet.ai"
     },
     "homepage": "https://cloudfleet.ai/docs",
-    "repository": "https://github.com/cloudfleetai/cloudfleet-plugin-claude",
+    "repository": "https://github.com/cloudfleetai/agents",
     "license": "Apache-2.0",
     "keywords": [
         "kubernetes",

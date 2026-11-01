@@ -20,7 +20,7 @@ Retrieve and display information about your Cloudfleet clusters.
 
 ### 1. List or fetch clusters
 
-If `$ARGUMENTS` contains a specific cluster name or ID:
+If the user named a specific cluster (by name or ID):
 
 ```bash
 cloudfleet clusters describe <cluster-id>

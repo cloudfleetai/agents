@@ -23,7 +23,7 @@ Check for kubectl with `command -v kubectl`. Use kubectl when it is installed, a
 
 ### 1. Determine cluster
 
-If not provided in `$ARGUMENTS`, run `cloudfleet clusters list` (with `--profile` if specified) and ask the user which cluster to query.
+If the user did not name a cluster, run `cloudfleet clusters list` (with `--profile` if specified) and ask the user which cluster to query.
 
 ### 2. Determine access method and configure
 
