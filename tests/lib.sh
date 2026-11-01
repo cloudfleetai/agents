@@ -46,7 +46,7 @@ log_has() { log_lines | jq -e -s "any(.[]; $1)" >/dev/null 2>&1; }
 log_shapes() {
     log_lines | jq -s -S '
         map(select(.event != "" and (.input | type) == "object")
-            | (.input.tool_name // .input.toolName) as $tool
+            | (.input.tool_name // .input.toolName // .input.toolCall.name) as $tool
             | {key: (.event + (if $tool then ":" + ($tool | sub("^(mcp__|cloudfleet-).*"; "mcp") | ascii_downcase) else "" end)),
                value: (.input | to_entries | map({(.key): (.value | type)}) | add)})
         | group_by(.key)

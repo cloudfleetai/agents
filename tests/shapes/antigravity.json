@@ -1,0 +1,86 @@
+{
+  "PostToolUse:call_mcp_tool": {
+    "artifactDirectoryPath": [
+      "string"
+    ],
+    "conversationId": [
+      "string"
+    ],
+    "error": [
+      "string"
+    ],
+    "lastUserInput": [
+      "string"
+    ],
+    "modelName": [
+      "string"
+    ],
+    "stepIdx": [
+      "number"
+    ],
+    "toolCall": [
+      "object"
+    ],
+    "transcriptPath": [
+      "string"
+    ],
+    "workspacePaths": [
+      "array"
+    ]
+  },
+  "PostToolUse:run_command": {
+    "artifactDirectoryPath": [
+      "string"
+    ],
+    "conversationId": [
+      "string"
+    ],
+    "error": [
+      "string"
+    ],
+    "lastUserInput": [
+      "string"
+    ],
+    "modelName": [
+      "string"
+    ],
+    "stepIdx": [
+      "number"
+    ],
+    "toolCall": [
+      "object"
+    ],
+    "transcriptPath": [
+      "string"
+    ],
+    "workspacePaths": [
+      "array"
+    ]
+  },
+  "PreInvocation": {
+    "artifactDirectoryPath": [
+      "string"
+    ],
+    "conversationId": [
+      "string"
+    ],
+    "initialNumSteps": [
+      "number"
+    ],
+    "invocationNum": [
+      "number"
+    ],
+    "lastUserInput": [
+      "string"
+    ],
+    "modelName": [
+      "string"
+    ],
+    "transcriptPath": [
+      "string"
+    ],
+    "workspacePaths": [
+      "array"
+    ]
+  }
+}

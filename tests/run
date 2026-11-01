@@ -50,7 +50,7 @@ live() {
     echo "Live ($H_MODEL):"
     CLOUDFLEET_FEEDBACK_ROLL=99 h_prompt "Call the cloudfleet MCP tool who_am_i once. $NO_FEEDBACK Then reply with just: done"
     check "prompt reaches the $H_PROMPT_EVENT hook" "log_has '.event == \"$H_PROMPT_EVENT\"'"
-    check "MCP call reaches the hooks" "log_has '.input | tojson | contains(\"${H_MCP_PREFIX}who_am_i\")'"
+    check "MCP call reaches the hooks" "log_has '.input | tojson | (contains(\"$H_MCP_PREFIX\") and contains(\"who_am_i\"))'"
     check "successful call, roll above the rate: no prompt" "! log_has '.output != null'"
 
     CLOUDFLEET_FEEDBACK_ROLL=99 h_prompt "Run this shell command once and do not retry or investigate it: cloudfleet clusters describe 00000000-0000-0000-0000-000000000000. $NO_FEEDBACK Then reply with just: done"
@@ -88,6 +88,7 @@ run_harness() (
     HOOK_LOG="$WORK/hook.log"
     mkdir -p "$PROJECT"
     finish() {
+        declare -F h_teardown >/dev/null && h_teardown
         echo "$PASSED $FAILED $SKIPPED" >>"$RESULTS"
         rm -f "$WORK/codex-home/auth.json"
         if [ "${KEEP:-0}" = 1 ]; then echo "work directory kept: $WORK"; else rm -rf "$WORK"; fi

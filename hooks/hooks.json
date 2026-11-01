@@ -1,6 +1,28 @@
 {
-  "version": 1,
   "hooks": {
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "\"${COPILOT_PLUGIN_ROOT}/scripts/feedback-hook\" copilot postToolUse",
+        "timeoutSec": 5,
+        "matcher": "^(bash|cloudfleet-.*)$"
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "type": "command",
+        "bash": "\"${COPILOT_PLUGIN_ROOT}/scripts/feedback-hook\" copilot postToolUseFailure",
+        "timeoutSec": 5,
+        "matcher": "^(bash|cloudfleet-.*)$"
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "\"${COPILOT_PLUGIN_ROOT}/scripts/feedback-hook\" copilot userPromptSubmitted",
+        "timeoutSec": 5
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Agent",
@@ -8,6 +30,16 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/feedback-hook\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "^(run_command|call_mcp_tool)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scripts/feedback-hook antigravity PostToolUse",
             "timeout": 5
           }
         ]
@@ -67,27 +99,11 @@
         ]
       }
     ],
-    "postToolUse": [
+    "PreInvocation": [
       {
         "type": "command",
-        "bash": "\"${COPILOT_PLUGIN_ROOT}/scripts/feedback-hook\" copilot postToolUse",
-        "timeoutSec": 5,
-        "matcher": "^(bash|cloudfleet-.*)$"
-      }
-    ],
-    "postToolUseFailure": [
-      {
-        "type": "command",
-        "bash": "\"${COPILOT_PLUGIN_ROOT}/scripts/feedback-hook\" copilot postToolUseFailure",
-        "timeoutSec": 5,
-        "matcher": "^(bash|cloudfleet-.*)$"
-      }
-    ],
-    "userPromptSubmitted": [
-      {
-        "type": "command",
-        "bash": "\"${COPILOT_PLUGIN_ROOT}/scripts/feedback-hook\" copilot userPromptSubmitted",
-        "timeoutSec": 5
+        "command": "scripts/feedback-hook antigravity PreInvocation",
+        "timeout": 5
       }
     ]
   }

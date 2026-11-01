@@ -4,8 +4,8 @@
 # send Cloudfleet feedback after the user approves the draft.
 #
 # The first argument names the harness: none for Claude Code, `codex` for Codex,
-# `copilot` for Copilot CLI; Copilot's payloads carry no event name, so the
-# second argument names the event.
+# `copilot` for Copilot CLI, `antigravity` for Antigravity. Copilot's and
+# Antigravity's payloads carry no event name, so the second argument names it.
 #
 # Claude Code
 # Event                 Condition                                       Rate
@@ -35,6 +35,16 @@
 # its output. Its prompt event has no transcript, so Cloudfleet calls leave a
 # per-session marker that the next prompt consumes.
 #
+# Antigravity imports hooks/hooks.json as a named hook ("hooks"), so it sees
+# only its own events in there. PostToolUse output is ignored, so PostToolUse
+# records Cloudfleet calls and the next PreInvocation, before the model reads
+# the result, injects the prompt.
+# PreInvocation         a recorded `cloudfleet` command exited non-zero  always
+#                       (exit code from the transcript) or MCP call failed
+# PreInvocation         a recorded call succeeded                        PER_TOOL_RATE
+# PreInvocation (0)     first model call of a turn, previous turn made   PER_TURN_RATE
+#                       a Cloudfleet call
+#
 # Sampled prompts fire at most once per session. Failures steer every time,
 # except failures of the feedback command itself.
 #
@@ -57,6 +67,7 @@ case "$HARNESS" in
     claude) MCP_PREFIX='mcp__plugin_cloudfleet_cloudfleet__' MANIFEST=.claude-plugin/plugin.json ;;
     codex) MCP_PREFIX='mcp__cloudfleet__' MANIFEST=.codex-plugin/plugin.json ;;
     copilot) MCP_PREFIX='cloudfleet-' MANIFEST=.claude-plugin/plugin.json ;;
+    antigravity) MCP_PREFIX='cloudfleet_cloudfleet/' MANIFEST=.claude-plugin/plugin.json ;;
     *) exit 0 ;;
 esac
 [ "$HARNESS" = claude ] && [ -n "${COPILOT_PLUGIN_ROOT:-}" ] && exit 0
@@ -68,14 +79,17 @@ INPUT=$RAW_INPUT
 OUTPUT=""
 EVENT=""
 
-# Test seam for tests/run: one line per invocation with the input and output.
-log_invocation() {
+# Antigravity expects a JSON object on stdout from every hook.
+# CLOUDFLEET_FEEDBACK_LOG is a test seam for tests/run: one line per invocation
+# with the input and output.
+on_exit() {
+    [ "$HARNESS" = antigravity ] && [ -z "$OUTPUT" ] && printf '{}\n'
     [ -n "${CLOUDFLEET_FEEDBACK_LOG:-}" ] || return 0
     jq -cn --arg h "$HARNESS" --arg e "$EVENT" --arg i "$RAW_INPUT" --arg o "$OUTPUT" \
         '{harness: $h, event: $e, input: ($i | fromjson? // $i), output: (if $o == "" then null else ($o | fromjson? // $o) end)}' \
         >>"$CLOUDFLEET_FEEDBACK_LOG" 2>/dev/null
 }
-trap log_invocation EXIT
+trap on_exit EXIT
 
 # Copilot's camelCase payload, mapped onto the field names used below.
 if [ "$HARNESS" = copilot ]; then
@@ -84,6 +98,15 @@ if [ "$HARNESS" = copilot ]; then
         tool_name: (if .toolName == "bash" then "Bash" else .toolName end),
         tool_input: (.toolArgs | if type == "string" then (fromjson? // {}) else . end),
         tool_response: .toolResult, error}' 2>/dev/null) || exit 0
+elif [ "$HARNESS" = antigravity ]; then
+    INPUT=$(printf '%s' "$RAW_INPUT" | jq -c --arg e "${2:-}" '{
+        hook_event_name: $e, session_id: .conversationId, transcript_path: .transcriptPath,
+        step: .stepIdx, invocation: .invocationNum, error: (.error // ""),
+        tool_name: (.toolCall.name as $n | .toolCall.args as $a
+            | if $n == "run_command" then "Bash"
+              elif $n == "call_mcp_tool" then "\($a.ServerName)/\($a.ToolName)"
+              else $n end),
+        tool_input: {command: .toolCall.args.CommandLine}}' 2>/dev/null) || exit 0
 fi
 
 field() { printf '%s' "$INPUT" | jq -r "$1 // empty" 2>/dev/null; }
@@ -98,6 +121,7 @@ SESSION=$(field .session_id | tr -cd 'A-Za-z0-9_-')
 MARKER_DIR=${TMPDIR:-/tmp}
 ASKED="${MARKER_DIR%/}/cloudfleet-feedback-${SESSION:-nosession}"
 USED="$ASKED-used"
+PENDING="$ASKED-pending"
 
 # Overridable so tests are deterministic.
 sampled() { [ "${CLOUDFLEET_FEEDBACK_ROLL:-$((RANDOM % 100))}" -lt "$1" ]; }
@@ -229,8 +253,51 @@ copilot_exit_code() {
     field .tool_response.textResultForLlm | grep -oE 'completed with exit code [0-9]+>' | tail -n 1 | grep -oE '[0-9]+'
 }
 
+# Each pending line is "<transcript step> <failed|check|ok>"; "check" needs the
+# exit code, which Antigravity writes to the transcript step for the command.
+antigravity_step_failed() {
+    local t
+    t=$(field .transcript_path)
+    [ -f "$t" ] || return 1
+    grep -F "\"step_index\":$1," "$t" | jq -r '.content // empty' 2>/dev/null |
+        grep -oE 'Command exited with code [0-9]+' | grep -qvE 'code 0$'
+}
+
 KIND=""
 case "$HARNESS:$EVENT" in
+    antigravity:PostToolUse)
+        is_cloudfleet_call "$INPUT" || exit 0
+        : >"$USED" 2>/dev/null
+        if [ -n "$(field .error)" ]; then state=failed
+        elif [ "$(field .tool_name)" = Bash ]; then state=check
+        else state=ok
+        fi
+        printf '%s %s\n' "$(field .step)" "$state" >>"$PENDING" 2>/dev/null
+        exit 0
+        ;;
+    antigravity:PreInvocation)
+        if [ "$(field .invocation)" = 0 ] || [ -z "$(field .invocation)" ]; then
+            rm -f "$PENDING"
+            [ -e "$USED" ] || exit 0
+            rm -f "$USED"
+            [ -e "$ASKED" ] && exit 0
+            sampled "$PER_TURN_RATE" || exit 0
+            KIND=turn
+        else
+            [ -s "$PENDING" ] || exit 0
+            pending=$(cat "$PENDING")
+            rm -f "$PENDING"
+            while read -r step state; do
+                [ "$state" = failed ] && KIND=failure
+                [ "$state" = check ] && antigravity_step_failed "$step" && KIND=failure
+            done <<<"$pending"
+            if [ -z "$KIND" ]; then
+                [ -e "$ASKED" ] && exit 0
+                sampled "$PER_TOOL_RATE" || exit 0
+                KIND=tool
+            fi
+        fi
+        ;;
     copilot:postToolUse)
         is_cloudfleet_call "$INPUT" || exit 0
         : >"$USED" 2>/dev/null
@@ -331,6 +398,9 @@ esac
 
 if [ "$KIND" = failure ] && [ "$HARNESS" = claude ]; then
     OUTPUT=$(jq -cn --arg r "$MSG" '{decision: "block", reason: $r}')
+elif [ "$HARNESS" = antigravity ]; then
+    [ "$KIND" = failure ] || : >"$ASKED" 2>/dev/null
+    OUTPUT=$(jq -cn --arg c "$MSG" '{injectSteps: [{ephemeralMessage: $c}]}')
 elif [ "$HARNESS" = copilot ]; then
     [ "$KIND" = failure ] || : >"$ASKED" 2>/dev/null
     OUTPUT=$(jq -cn --arg c "$MSG" '{additionalContext: $c}')

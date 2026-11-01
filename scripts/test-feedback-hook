@@ -234,6 +234,47 @@ out=$(printf '%s' "$c_failure" | jq -c '. + {session_id: "cp"}' | COPILOT_PLUGIN
 check "Claude-format entries are ignored under Copilot" '[ -z "$out" ]'
 
 echo
+echo "Antigravity (PostToolUse records, PreInvocation prompts):"
+AG_T="$T/ag-transcript.jsonl"
+printf '%s\n' '{"step_index":4,"type":"GENERIC","content":"Command exited with code 66.\n\nCommand output:\nError: not found"}' \
+    '{"step_index":6,"type":"GENERIC","content":"Command exited with code 0.\n\nCommand output:\n[]"}' >"$AG_T"
+ag_cmd() { jq -cn --arg c "$1" --argjson i "$2" --arg t "$AG_T" --arg s "test-$session" '{conversationId: $s, transcriptPath: $t, stepIdx: $i, error: "", toolCall: {name: "run_command", args: {CommandLine: $c}}}'; }
+ag_mcp() { jq -cn --arg n "$1" --arg e "${2:-}" --arg s "test-$session" '{conversationId: $s, stepIdx: 9, error: $e, toolCall: {name: "call_mcp_tool", args: {ServerName: "cloudfleet_cloudfleet", ToolName: $n, Arguments: {}}}}'; }
+ag_inv() { jq -cn --argjson n "$1" --arg t "$AG_T" --arg s "test-$session" '{conversationId: $s, transcriptPath: $t, invocationNum: $n}'; }
+ag_injects() { printf '%s' "$LAST_OUT" | jq -e '.injectSteps[0].ephemeralMessage | length > 0' >/dev/null 2>&1; }
+new_session
+LAST_OUT=$(run 99 "$(ag_cmd 'cloudfleet clusters describe x' 4)" "antigravity PostToolUse")
+check "PostToolUse answers {} and prompts nothing" '[ "$LAST_OUT" = "{}" ]'
+LAST_OUT=$(run 99 "$(ag_inv 2)" "antigravity PreInvocation")
+check "next PreInvocation: command exited non-zero" 'ag_injects && printf "%s" "$LAST_OUT" | grep -qF "The Cloudfleet tool failed"'
+check "  ...names the Antigravity client" 'printf "%s" "$LAST_OUT" | grep -qF "cloudfleet-plugin-antigravity/$PLUGIN_VERSION"'
+LAST_OUT=$(run 99 "$(ag_inv 3)" "antigravity PreInvocation")
+check "pending calls are consumed" '[ "$LAST_OUT" = "{}" ]'
+run 99 "$(ag_mcp clusters_get 'Cluster not found')" "antigravity PostToolUse" >/dev/null
+LAST_OUT=$(run 99 "$(ag_inv 4)" "antigravity PreInvocation")
+check "MCP call failed" 'ag_injects'
+run 99 "$(ag_cmd 'cloudfleet clusters list' 6)" "antigravity PostToolUse" >/dev/null
+LAST_OUT=$(run 1 "$(ag_inv 5)" "antigravity PreInvocation")
+check "command succeeded, roll above the rate: nothing" '[ "$LAST_OUT" = "{}" ]'
+run 99 "$(ag_cmd 'kubectl get pods' 4)" "antigravity PostToolUse" >/dev/null
+LAST_OUT=$(run 99 "$(ag_inv 6)" "antigravity PreInvocation")
+check "another command failed: nothing" '[ "$LAST_OUT" = "{}" ]'
+run 99 "$(ag_mcp feedback_send 'boom')" "antigravity PostToolUse" >/dev/null
+LAST_OUT=$(run 99 "$(ag_inv 7)" "antigravity PreInvocation")
+check "feedback_send failed: nothing" '[ "$LAST_OUT" = "{}" ]'
+LAST_OUT=$(run 0 "$(ag_inv 0)" "antigravity PreInvocation")
+check "first call of the next turn assesses the Cloudfleet turn" 'ag_injects && printf "%s" "$LAST_OUT" | grep -qF "Assess the preceding Cloudfleet work"'
+LAST_OUT=$(run 0 "$(ag_inv 0)" "antigravity PreInvocation")
+check "the turn after that: nothing" '[ "$LAST_OUT" = "{}" ]'
+new_session
+run 99 "$(ag_mcp who_am_i)" "antigravity PostToolUse" >/dev/null
+LAST_OUT=$(run 0 "$(ag_inv 1)" "antigravity PreInvocation")
+check "MCP call succeeded, roll under the rate" 'ag_injects'
+run 99 "$(ag_mcp who_am_i)" "antigravity PostToolUse" >/dev/null
+LAST_OUT=$(run 0 "$(ag_inv 2)" "antigravity PreInvocation")
+check "second ask in the same session: nothing" '[ "$LAST_OUT" = "{}" ]'
+
+echo
 echo "CLI version (feedback_send works through any CLI, \`cloudfleet feedback\` needs 1.10.0+):"
 offers_cli='printf "%s" "$LAST_OUT" | grep -qF "cloudfleet feedback --sentiment"'
 for v in 1.9.9 1.2.0 dev; do
@@ -255,6 +296,17 @@ out=$(failure "${MCP}clusters_get" | jq -c '. + {session_id: "nocli"}' |
     env -i PATH="$nocli" TMPDIR="$T/markers" CLOUDFLEET_FEEDBACK_ROLL=0 "$HOOK" 2>/dev/null)
 check "CLI not installed: no output" '[ -z "$out" ]'
 rm -rf "$nocli"
+
+echo
+echo "hooks/hooks.json layout (shared by Claude Code, Copilot CLI and Antigravity):"
+HOOKS_JSON="$(dirname "$HOOK")/../hooks/hooks.json"
+# Antigravity decodes the file with Go, which matches keys case-insensitively
+# and keeps the last one, so Copilot's postToolUse must come before PostToolUse.
+check "postToolUse precedes PostToolUse" \
+    'jq -e ".hooks | keys_unsorted | (index(\"postToolUse\") < index(\"PostToolUse\"))" "$HOOKS_JSON" >/dev/null'
+# Antigravity reads every top-level key as a named hook and rejects the file if
+# one is not an object (a Copilot-style "version": 1 did that).
+check "only the hooks key at the top level" '[ "$(jq -c "keys" "$HOOKS_JSON")" = "[\"hooks\"]" ]'
 
 echo
 echo "Missing jq fails open:"
