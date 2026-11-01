@@ -11,8 +11,11 @@
 # UserPromptSubmit      the previous turn mentions Cloudfleet            PER_TURN_RATE
 #
 # Sampled prompts fire at most once per session. Failures steer every time,
-# except failures of the feedback command itself. Nothing fires unless the
-# installed CLI is 1.10.0 or newer, the first release with feedback.
+# except failures of the feedback command itself.
+#
+# The feedback_send MCP tool works with any CLI, because `cloudfleet mcp`
+# forwards every request to the server; `cloudfleet feedback` needs 1.10.0. So
+# nothing fires without a CLI, and the CLI command is offered only from 1.10.0.
 #
 # Always exits 0: feedback guidance must never interrupt the agent's work.
 
@@ -64,9 +67,9 @@ is_cloudfleet_call() {
     return 1
 }
 
-cli_supported() {
+# Unparseable versions (dev builds) count as older.
+cli_has_feedback() {
     local v want have i
-    command -v cloudfleet >/dev/null 2>&1 || return 1
     v=$(cloudfleet --version 2>/dev/null | awk '{print $NF}' | sed -E 's/^v//; s/[-+].*$//')
     printf '%s' "$v" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || return 1
     IFS=. read -ra have <<<"$v"
@@ -158,14 +161,18 @@ case "$EVENT" in
     *) exit 0 ;;
 esac
 
-cli_supported || exit 0
+command -v cloudfleet >/dev/null 2>&1 || exit 0
 
 PLUGIN_VERSION=$(jq -r '.version // empty' "${0%/*}/../.claude-plugin/plugin.json" 2>/dev/null)
 CLIENT="cloudfleet-plugin-claude/${PLUGIN_VERSION:-unknown}"
 
 CRITERIA="If it was useful, confusing, wrong, or incomplete, send Cloudfleet feedback."
-EXAMPLE="For example: \`cloudfleet feedback --sentiment neutral --message \"The fleet docs did not say constraints default to amd64\" --context \"Creating a Hetzner fleet with Terraform\" --source plugin --client $CLIENT\`, or the \`feedback_send\` MCP tool with the same fields."
-OPTIONS="Use positive, neutral, or negative honestly. Do not include secrets, kubeconfig contents, or customer data. \`cloudfleet feedback --help\` lists every option."
+if cli_has_feedback; then
+    EXAMPLE="Use the \`feedback_send\` MCP tool or the CLI, for example: \`cloudfleet feedback --sentiment neutral --message \"The fleet docs did not say constraints default to amd64\" --context \"Creating a Hetzner fleet with Terraform\" --source plugin --client $CLIENT\`."
+else
+    EXAMPLE="Use the \`feedback_send\` MCP tool, for example with sentiment \"neutral\", message \"The fleet docs did not say constraints default to amd64\", context \"Creating a Hetzner fleet with Terraform\", and client \"$CLIENT\". The installed CLI predates \`cloudfleet feedback\` (1.10.0), so do not use the CLI command."
+fi
+OPTIONS="Use positive, neutral, or negative honestly. Do not include secrets, kubeconfig contents, or customer data. Feedback is for one-way notes: if the user needs an answer or Cloudfleet must look into their environment, offer a support ticket instead, and for a concrete feature request offer the roadmap (see the \`cloudfleet:contact\` skill)."
 APPROVAL="Before submitting, show the prospective feedback to the user and ask for approval, mentioning that the Cloudfleet team reads feedback but does not reply, so anything that needs an answer belongs in a support ticket."
 
 case "$KIND" in

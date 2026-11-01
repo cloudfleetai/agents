@@ -119,4 +119,4 @@ Present findings with:
 - Recommended remediation steps
 - Any Cloudfleet-specific guidance (e.g., fleet adjustments, version upgrades)
 
-If the issue appears to be on the platform side (e.g., control plane unreachable, API errors), remind the user to check https://status.cloudfleet.ai/ for ongoing incidents and, if needed, open a support ticket at https://console.cloudfleet.ai/support.
+If the issue appears to be on the platform side (e.g., control plane unreachable, API errors), remind the user to check https://status.cloudfleet.ai/ for ongoing incidents and, if needed, offer to open a support ticket with the findings above (`technical` category). If the investigation was slowed by a misleading error, missing docs, or undocumented behavior, offer to send that as feedback as well. The `contact` skill covers both.

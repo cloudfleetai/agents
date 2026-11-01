@@ -109,6 +109,10 @@ Let the user know that the Cloudfleet MCP server is already configured via this 
 
 **Note**: The MCP server currently uses the `default` CLI profile only. If the user has a non-default profile, they should either configure a `default` profile pointing to the same organization, or use kubectl with `--profile` for CLI commands instead.
 
-### 7. Feedback
+### 7. Reaching Cloudfleet
 
-Let the user know that feedback about Cloudfleet or this plugin is welcome, positive or negative, and that you can send it for them: `cloudfleet feedback --sentiment <positive|neutral|negative> --message "..." --context "..." --source plugin`, or the `feedback_send` MCP tool. It needs CLI 1.10.0 or newer. Show them the draft and send only after they approve it. The Cloudfleet team reads feedback but does not reply; anything that needs an answer belongs in a support ticket at https://console.cloudfleet.ai/support.
+Let the user know there are three ways to reach Cloudfleet, and that you can use any of them for them (see the `contact` skill):
+
+- **Support ticket** for anything that needs an answer: something broken, a problem in their environment, billing, or wanting to talk to the team.
+- **Roadmap** to see requested features, vote on them, or suggest a concrete new one.
+- **Feedback** for quick one-way notes, such as typos, missing docs, confusing errors, undocumented behavior, or an idea. It gets no reply.

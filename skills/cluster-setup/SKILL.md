@@ -88,7 +88,7 @@ Every provider block needs `"enabled": true` alongside its credentials.
 until [ "$(cloudfleet clusters fleets describe <cluster-id> <fleet-id> -o json -q ready)" = "true" ]; do sleep 5; done
 ```
 
-Auto-provisioning providers: Hetzner (API token), AWS (IAM role ARN), GCP (project ID). These are the only three in the public fleet schema; Upcloud, Exoscale, Scaleway, and OVH are in private preview and need Cloudfleet support to enable. For anything else, join nodes as self-managed. A single fleet can span multiple providers. See [references/cluster-setup.md](references/cluster-setup.md) for all provider examples.
+Auto-provisioning providers: Hetzner (API token), AWS (IAM role ARN), GCP (project ID). These are the only three in the public fleet schema; Upcloud, Exoscale, Scaleway, and OVH are in private preview: enabling one takes a `general` support ticket (see the `contact` skill). For anything else, join nodes as self-managed. A single fleet can span multiple providers. See [references/cluster-setup.md](references/cluster-setup.md) for all provider examples.
 
 **Updates replace the whole resource.** `clusters update` and `fleets update` are full PUTs: any field left out resets to its default, and a flags-only update is rejected client-side. Read the current state, edit it, pipe it back. See [references/cluster-setup.md](references/cluster-setup.md).
 

@@ -7,7 +7,8 @@
 - **Preconfigured MCP server** — query clusters, list resources, and get cluster info without local setup
 - **kubectl guardrail** — a PreToolUse hook resolves the server each kubectl command would reach and blocks it if that server is not a CFKE cluster, plus isolated kubeconfig management. A backstop, not a security boundary: aliases and wrapper scripts bypass it.
 - **Terraform guardrail**: before `terraform plan`, `apply` or `destroy` in a directory using the Cloudfleet provider, a PreToolUse hook checks for a `dev_overrides` entry that would swap in a local provider build, and for `CLOUDFLEET_ORGANIZATION_ID`, the provider block and the profile naming different organizations. `apply` and `destroy` prompt for confirmation only when one of those is found.
-- **Feedback prompts**: modelled on the Stripe plugin. When a Cloudfleet skill, MCP tool or CLI command fails, and occasionally after Cloudfleet work, hooks ask Claude to assess it and offer to send feedback with `cloudfleet feedback`. Claude shows the draft and sends only after you approve. Needs CLI 1.10.0+; with an older CLI the hooks stay silent.
+- **Feedback prompts**: modelled on the Stripe plugin. When a Cloudfleet skill, MCP tool or CLI command fails, and occasionally after Cloudfleet work, hooks ask Claude to assess it and offer to send feedback through the `feedback_send` MCP tool, or `cloudfleet feedback` on CLI 1.10.0+. Claude shows the draft and sends only after you approve.
+- **Reaching Cloudfleet**: the `contact` skill routes between support tickets (anything that needs an answer or an investigation), the roadmap (see, vote on, or suggest concrete features), and feedback (quick one-way notes).
 - **Background knowledge** — CFKE architecture, CFCR usage, best practices (resource requests, load balancers, node placement) auto-triggered when relevant
 - **Guided workflows** — cluster setup via the CLI or Terraform, fleet configuration, self-managed nodes, debugging
 
@@ -55,6 +56,7 @@ Once installed, try these prompts:
 - `Write Terraform for a CFKE cluster with a Hetzner fleet`: HCL against the Cloudfleet provider
 - `Check if my cluster follows best practices` — audits deployments for resource requests, LB policy, node placement
 - `Debug my cluster, pods are stuck in Pending` — systematic debugging workflow
+- `Is anyone else asking for ARM nodes on Hetzner?`: checks the roadmap, votes, or suggests it
 - `Push my app image to CFCR` — container registry guidance
 - `Add a self-managed node to my cluster` — join any Linux server
 
@@ -84,6 +86,7 @@ Once installed, try these prompts:
 | `best-practices` | Auto      | Resource requests, LB policy, node placement                 |
 | `cfke-overview`  | Auto      | CFKE architecture and concepts                               |
 | `cfcr-overview`  | Auto      | Container registry usage                                     |
+| `contact`        | Yes       | Support tickets, roadmap, and feedback                       |
 
 ## Disclaimer
 

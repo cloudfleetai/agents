@@ -153,18 +153,27 @@ expect none "mention only in an earlier turn" 0 "$(prompt "$T_OLD")"
 expect none "missing transcript" 0 "$(prompt "$T/missing.jsonl")"
 
 echo
-echo "CLI version gate (feedback needs 1.10.0+):"
-for v in 1.9.9 0.12.0 dev; do
+echo "CLI version (feedback_send works through any CLI, \`cloudfleet feedback\` needs 1.10.0+):"
+offers_cli='printf "%s" "$LAST_OUT" | grep -qF "cloudfleet feedback --sentiment"'
+for v in 1.9.9 1.2.0 dev; do
     fake_cli "$v"
-    expect none "CLI $v" 99 "$(failure "${MCP}clusters_get")"
+    expect steer "CLI $v still steers" 99 "$(failure "${MCP}clusters_get")"
+    check "  ...to the MCP tool only" "! $offers_cli && printf '%s' \"\$LAST_OUT\" | grep -qF feedback_send"
 done
 for v in 1.10.0 1.12.3 2.0.0; do
     fake_cli "$v"
-    expect steer "CLI $v" 99 "$(failure "${MCP}clusters_get")"
+    expect steer "CLI $v steers" 99 "$(failure "${MCP}clusters_get")"
+    check "  ...offering the CLI command too" "$offers_cli"
 done
-rm "$T/bin/cloudfleet"
-expect none "CLI not installed" 99 "$(failure "${MCP}clusters_get")"
-fake_cli 1.10.0
+# A PATH with the hook's dependencies but no cloudfleet, real or fake.
+nocli=$(mktemp -d)
+for b in bash jq grep cat sed tr head tail awk; do
+    ln -s "$(command -v "$b")" "$nocli/$b" 2>/dev/null
+done
+out=$(failure "${MCP}clusters_get" | jq -c '. + {session_id: "nocli"}' |
+    env -i PATH="$nocli" TMPDIR="$T/markers" CLOUDFLEET_FEEDBACK_ROLL=0 "$HOOK" 2>/dev/null)
+check "CLI not installed: no output" '[ -z "$out" ]'
+rm -rf "$nocli"
 
 echo
 echo "Missing jq fails open:"

@@ -21,7 +21,7 @@ CFKE (Cloudfleet Kubernetes Engine) is a fully managed Kubernetes platform. A si
 
 ### Supported Infrastructure
 
-- **Auto-provisioning**: AWS, GCP, and Hetzner Cloud. Upcloud, Exoscale, Scaleway, and OVH are in private preview and are enabled by Cloudfleet support, not self-service.
+- **Auto-provisioning**: AWS, GCP, and Hetzner Cloud. Upcloud, Exoscale, Scaleway, and OVH are in private preview and are enabled through a support ticket, not self-service.
 - **Self-managed**: Any Linux server can join with a single command. This is how Vultr, Proxmox, VMware, bare metal, and any other provider without native auto-provisioning are used.
 - **Hybrid**: Mix cloud and on-premise nodes in the same cluster
 
