@@ -57,30 +57,36 @@ kubectl --kubeconfig $KUBECONFIG get events --all-namespaces --sort-by='.lastTim
 
 ### 4. Systematic diagnosis
 
-For comprehensive parallel diagnostics, consider delegating to the `cluster-diagnostics` agent.
+The checks below are independent. If you can run subagents, run them in parallel and have each report facts only (resource states, error messages, event timestamps), not fixes.
 
 **With kubectl:**
 
-Nodes:
+Nodes: Ready/NotReady, conditions (MemoryPressure, DiskPressure, PIDPressure), taints, capacity.
 
 ```bash
 kubectl --kubeconfig $KUBECONFIG describe nodes | grep -A5 "Conditions:"
 kubectl --kubeconfig $KUBECONFIG top nodes
 ```
 
-System pods:
+Pods: not Running or Succeeded, more than 5 restarts, stuck in Pending (check events for scheduling failures), in CrashLoopBackOff (read the logs of the last crash with `--previous`).
+
+System pods: CoreDNS, Cilium and Konnectivity in kube-system, any not running or restarting.
 
 ```bash
 kubectl --kubeconfig $KUBECONFIG get pods -n kube-system -o wide
 ```
 
-Resource usage:
+Resource pressure: nodes above 85% CPU or memory, and the top consumers.
 
 ```bash
 kubectl --kubeconfig $KUBECONFIG top pods --all-namespaces --sort-by=memory | head -20
 ```
 
+Events: warnings in the last 30 minutes, failed scheduling, evictions.
+
 **With MCP only:** Query `/api/v1/namespaces/kube-system/pods` and `/api/v1/nodes` for status details. Note that `kubectl top` equivalents are not available via MCP.
+
+Group the findings as CRITICAL, WARNING and INFO before moving on.
 
 ### 5. Targeted investigation
 

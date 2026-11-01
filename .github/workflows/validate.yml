@@ -39,5 +39,5 @@ jobs:
       - name: Install markdownlint-cli
         run: npm install -g markdownlint-cli
 
-      - name: Lint skill and agent files
-        run: markdownlint 'skills/**/*.md' 'agents/**/*.md' --config .markdownlint.json
+      - name: Lint skill files
+        run: markdownlint 'skills/**/*.md' --config .markdownlint.json

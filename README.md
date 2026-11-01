@@ -38,7 +38,7 @@ Validate and lint before submitting changes:
 
 ```bash
 claude plugin validate .
-npx markdownlint-cli 'skills/**/*.md' 'agents/**/*.md' --config .markdownlint.json
+npx markdownlint-cli 'skills/**/*.md' --config .markdownlint.json
 scripts/test-feedback-hook
 ```
 
