@@ -113,6 +113,6 @@ Let the user know that the Cloudfleet MCP server is already configured via this 
 
 Let the user know there are three ways to reach Cloudfleet, and that you can use any of them for them (see the `contact` skill):
 
-- **Support ticket** for anything that needs an answer: something broken, a problem in their environment, billing, or wanting to talk to the team.
-- **Roadmap** to see requested features, vote on them, or suggest a concrete new one.
-- **Feedback** for quick one-way notes, such as typos, missing docs, confusing errors, undocumented behavior, or an idea. It gets no reply.
+- **Support ticket** for problems that need back-and-forth with the Cloudfleet team: something broken, debugging in their environment, billing, or talking to the team.
+- **Roadmap** to see what other customers have asked for and vote on it, since votes set what the team builds next, or to suggest a concrete feature.
+- **Feedback** for papercuts the team can act on from the note alone: typos, missing docs, confusing errors, undocumented behavior, or a rough idea.

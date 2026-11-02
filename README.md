@@ -17,7 +17,7 @@ Plugin by [Cloudfleet](https://cloudfleet.ai) for AI coding agents: operate Clou
 
 - **Preconfigured MCP server** — query clusters, list resources, and get cluster info without local setup
 - **Feedback prompts**: modelled on the Stripe plugin. When a Cloudfleet skill, MCP tool or CLI command fails, and occasionally after Cloudfleet work, hooks ask the agent to assess it and offer to send feedback through the `feedback_send` MCP tool, or `cloudfleet feedback` on CLI 1.10.0+. The agent shows the draft and sends only after you approve. Coverage differs by agent; see the table above.
-- **Reaching Cloudfleet**: the `contact` skill routes between support tickets (anything that needs an answer or an investigation), the roadmap (see, vote on, or suggest concrete features), and feedback (quick one-way notes).
+- **Reaching Cloudfleet**: the `contact` skill routes between support tickets (problems that need back-and-forth or debugging), the roadmap (see, vote on, or suggest concrete features), and feedback (papercuts and quick notes).
 - **Background knowledge** — CFKE architecture, CFCR usage, best practices (resource requests, load balancers, node placement) auto-triggered when relevant
 - **Guided workflows** — cluster setup via the CLI or Terraform, fleet configuration, self-managed nodes, debugging
 

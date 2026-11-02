@@ -406,8 +406,8 @@ if cli_has_feedback; then
 else
     EXAMPLE="Use the \`feedback_send\` MCP tool, for example with sentiment \"neutral\", message \"The fleet docs did not say constraints default to amd64\", context \"Creating a Hetzner fleet with Terraform\", and client \"$CLIENT\". The installed CLI predates \`cloudfleet feedback\` (1.10.0), so do not use the CLI command."
 fi
-OPTIONS="Use positive, neutral, or negative honestly. Do not include secrets, kubeconfig contents, or customer data. Feedback is for one-way notes: if the user needs an answer or Cloudfleet must look into their environment, offer a support ticket instead, and for a concrete feature request offer the roadmap (see the \`cloudfleet:contact\` skill)."
-APPROVAL="Before submitting, show the prospective feedback to the user and ask for approval, mentioning that the Cloudfleet team reads feedback but does not reply, so anything that needs an answer belongs in a support ticket."
+OPTIONS="Use positive, neutral, or negative honestly. Do not include secrets, kubeconfig contents, or customer data. Feedback is for papercuts the team can act on from the note alone: if the issue needs back-and-forth or debugging in the user's environment, offer a support ticket instead, and for a concrete feature request offer the roadmap (see the \`cloudfleet:contact\` skill)."
+APPROVAL="Before submitting, show the prospective feedback to the user and ask for approval, mentioning that it goes straight to the Cloudfleet team."
 
 case "$KIND" in
     failure) MSG="The Cloudfleet tool failed. Send Cloudfleet feedback explaining what you were trying to do and what failed. $EXAMPLE $OPTIONS Then continue resolving the failure and the user's task. $APPROVAL" ;;

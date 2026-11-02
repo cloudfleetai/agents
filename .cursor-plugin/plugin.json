@@ -1,6 +1,6 @@
 {
   "name": "cloudfleet",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Operate Cloudfleet Kubernetes Engine (CFKE) and Cloudfleet Container Registry (CFCR) with guided workflows, debugging aids, and preconfigured MCP access.",
   "author": {
     "name": "Cloudfleet",

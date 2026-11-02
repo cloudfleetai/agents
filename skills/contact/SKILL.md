@@ -11,16 +11,22 @@ Cloudfleet has three channels. Choose by what the user needs back.
 
 | Channel | Use it for | What comes back | CLI | MCP |
 | --- | --- | --- | --- | --- |
-| **Support ticket** | Something is broken; a problem that needs Cloudfleet to look into the user's organization, clusters, or fleets; billing, invoices, payment, plans, quota; private-preview access; the user wants to talk to someone | A reply thread from the Cloudfleet team, open until closed | `cloudfleet tickets` | `tickets_create`, `tickets_reply`, `tickets_list`, `tickets_get`, `tickets_grant_support_access` |
-| **Roadmap** | A concrete feature the user wants: see whether it is already requested, vote on it, or suggest it | Items every customer can see and vote on; suggestions are reviewed before they appear | `cloudfleet roadmap` | none |
-| **Feedback** | Quick one-way notes without a defined scope: typos, missing or wrong docs, undocumented behavior, confusing errors, small gaps, a rough idea for a feature or product, and what worked well | Nothing: the team reads it, but there is no reply and no status | `cloudfleet feedback` | `feedback_send` |
+| **Support ticket** | A problem that needs back-and-forth or debugging: something broken in the user's organization, clusters, or fleets; billing, invoices, payment, plans, quota; private-preview access; the user wants to talk to someone | A reply thread from the Cloudfleet team, open until closed | `cloudfleet tickets` | `tickets_create`, `tickets_reply`, `tickets_list`, `tickets_get`, `tickets_grant_support_access` |
+| **Roadmap** | A concrete feature the user wants: see whether it is already requested, vote on it, or suggest it | Items shared with all customers; votes set what the team builds next; suggestions appear after review | `cloudfleet roadmap` | none |
+| **Feedback** | Papercuts the team can act on from the note alone: typos, missing or wrong docs, undocumented behavior, confusing errors, small gaps, a rough idea, and what worked well | Delivered to the Cloudfleet team as a standalone note | `cloudfleet feedback` | `feedback_send` |
 
 Routing:
 
-- **Needs an answer or an investigation → ticket.** Feedback never gets a reply, so never route a problem the user is blocked on to feedback.
-- **A feature someone could vote on → roadmap.** A vague wish, or something too small for a roadmap item → feedback.
+- **Needs back-and-forth or debugging → ticket.** A feedback note starts no conversation, so a problem the user is blocked on always goes to a ticket.
+- **A feature someone could vote on → roadmap.** Votes set Cloudfleet's priorities, so when a matching item exists, encourage the user to vote on it. A vague wish, or something too small for a roadmap item → feedback.
 - **Platform looks down** (control plane unreachable, API errors): check https://status.cloudfleet.ai first. Open a ticket if the incident is not listed or the user is affected in a way the status page does not explain.
 - One situation can need two channels: a ticket for the broken cluster, plus feedback about the error message that hid the cause. Do not send the same text to both.
+
+Describing the channels to the user:
+
+- Support: "A support ticket starts a conversation with the Cloudfleet team to work through the problem with you."
+- Roadmap: "Votes on the roadmap decide what the Cloudfleet team builds next, so vote on anything you care about. New suggestions show up for everyone after a review, and progress is shared through the documentation and release notes."
+- Feedback: "This sends a short note straight to the Cloudfleet team."
 
 For every channel: draft the text, show it to the user, and send only after they approve it. Leave out secrets, tokens, kubeconfig contents, and customer data.
 
@@ -49,6 +55,8 @@ EOF
 
 ## Roadmap
 
+The roadmap shows items and votes, not progress. Cloudfleet shares progress through its documentation and release notes.
+
 1. List first: `cloudfleet roadmap list -o json`. Each item is `{id, text, vote}`, where `vote` is the user's own vote (`null` if none). Other users' votes are not returned.
 2. If an item matches, ask the user how to vote, then `cloudfleet roadmap vote <id> --value <1|2|-1>` (up, double up, down). A new vote replaces the old one; `cloudfleet roadmap unvote <id>` removes it.
 3. If nothing matches, `cloudfleet roadmap suggest --text "<one or two sentences>"`. The suggestion carries the user's up vote and is reviewed before it appears. Make it concrete: what, for which provider or use case, and why.
@@ -66,6 +74,6 @@ cloudfleet feedback --sentiment <positive|neutral|negative> \
 
 Set `<agent>` to the agent you run in: `claude`, `codex`, `copilot`, `antigravity`, `cursor`, or `kiro`.
 
-Or the `feedback_send` MCP tool with `sentiment`, `message`, `context`, and `client`. Keep one point per message (up to 2000 characters each for message and context). Use the sentiment honestly; positive feedback is useful too. Tell the user the team reads it but does not reply.
+Or the `feedback_send` MCP tool with `sentiment`, `message`, `context`, and `client`. Keep one point per message (up to 2000 characters each for message and context). Use the sentiment honestly; positive feedback is useful too. Tell the user it goes straight to the Cloudfleet team.
 
 This plugin's hooks occasionally ask you to assess recent Cloudfleet work and offer feedback. Apply the routing above when they do: a blocking problem is a ticket, and a concrete feature request belongs on the roadmap.
